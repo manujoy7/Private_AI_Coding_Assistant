@@ -254,6 +254,18 @@ export KUBEADMIN_PASS="<kubeadmin password>"
 
 > Edit the `USERS` array inside the script to add/remove developers.
 
+**Alternative: Factory URL (self-service).** Users can also create their own
+workspace by navigating to the DevSpaces factory URL — no admin script needed:
+
+```
+https://<devspaces-url>/#https://github.com/manujoy7/Private_AI_Coding_Assistant.git
+```
+
+DevSpaces reads `devfile.yaml` from the repo root, provisions the workspace
+with all pre-configured settings (custom image, env vars, OpenCode extension,
+Web UI), and the Devfile tab in the dashboard shows the full devfile content.
+This is the recommended enterprise approach for self-service onboarding.
+
 ### Step 6: Verify Deployment
 
 ```bash
