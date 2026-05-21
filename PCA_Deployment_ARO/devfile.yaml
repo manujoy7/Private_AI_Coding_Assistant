@@ -1,0 +1,48 @@
+schemaVersion: 2.2.2
+metadata:
+  name: opencode-private-ai
+  displayName: "OpenCode - Private AI Code Assistant"
+  description: "AI-powered coding workspace with OpenCode pre-configured to use the private Qwen3.6 model via the llm-d AI Gateway. No external API keys required."
+  icon: https://opencode.ai/favicon.ico
+  tags:
+    - AI
+    - OpenCode
+    - Private
+    - Qwen3.6
+  version: 1.0.0
+components:
+  - name: dev-tools
+    container:
+      image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
+      memoryRequest: 1Gi
+      memoryLimit: 8Gi
+      cpuRequest: 500m
+      cpuLimit: 4000m
+      mountSources: true
+      sourceMapping: /projects
+      env:
+        - name: VLLM_ENDPOINT
+          value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+        - name: VLLM_MODEL_ID
+          value: "Qwen/Qwen3.6-35B-A3B-FP8"
+        - name: OPENAI_API_KEY
+          value: "EMPTY"
+        - name: OPENAI_BASE_URL
+          value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+        - name: NODE_TLS_REJECT_UNAUTHORIZED
+          value: "0"
+      endpoints:
+        - name: opencode-ui
+          targetPort: 3000
+          exposure: public
+          protocol: https
+commands:
+  - id: opencode
+    exec:
+      label: "Start OpenCode"
+      component: dev-tools
+      workingDir: /projects
+      commandLine: opencode
+      group:
+        kind: run
+        isDefault: true
