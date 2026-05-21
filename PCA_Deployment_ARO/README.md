@@ -533,6 +533,25 @@ export KUBEADMIN_PASS="<kubeadmin password>"
 | Extension | `sst-dev.opencode` (auto-installed from Open VSX) |
 | Web UI Port | 4096 (public HTTPS endpoint) |
 
+### Custom OpenCode Image
+
+The workspace uses a custom container image built from the Red Hat Universal
+Developer Image (UDI) with OpenCode pre-installed and pre-configured:
+
+| Component | Detail |
+|-----------|--------|
+| Base image | `registry.redhat.io/devspaces/udi-rhel8:latest` |
+| OpenCode binary | Copied to `/usr/local/bin/opencode` (not symlinked — see troubleshooting) |
+| Config | `~/.config/opencode/opencode.json` — points to llm-d gateway |
+| Auth | `~/.local/share/opencode/auth.json` — API key `EMPTY` |
+| Build namespace | `opencode-build` |
+| ImageStream | `devspaces-opencode:latest` |
+| Rebuild | `oc start-build devspaces-opencode -n opencode-build` |
+
+> **Important:** The binary is copied to `/usr/local/bin` instead of symlinked
+> from `~/.local/bin` because the DevSpaces runtime overlay overwrites the
+> latter directory at container start.
+
 ---
 
 ## Benchmark Results
@@ -656,3 +675,32 @@ Then delete the running vLLM pod to trigger a rollout with the new args.
 **Model download slow or failing:**
 The model-cache PVC persists downloads across restarts. If HuggingFace is rate-limited,
 set `HF_TOKEN` in the container environment or the `hf-token` secret.
+
+**OpenCode binary not found in PATH inside DevSpaces workspace:**
+The DevSpaces runtime overlay filesystem overwrites `~/.local/bin` at container
+start, removing any symlinks placed there during the image build. The fix (already
+applied in the Dockerfile) copies the binary to `/usr/local/bin/opencode` instead
+of symlinking from `~/.local/bin`. If you still see `opencode: command not found`,
+rebuild the image: `oc start-build devspaces-opencode -n opencode-build`.
+
+**DevSpaces dashboard shows 0 workspaces for a user:**
+DevSpaces auto-provisions namespaces with a random suffix (e.g.,
+`dev1-devspaces-wk1ug6`). The workspace controller sets a
+`controller.devfile.io/creator` label to the creating user's UID. The dashboard
+only shows workspaces where this label matches the logged-in user. Common causes:
+
+- Workspace was created by `kubeadmin` instead of the actual user
+- Workspace is in a statically-named namespace (e.g., `dev1-devspaces`) instead
+  of the auto-provisioned one
+
+Fix: Run `scripts/setup-devspaces-users.sh` which logs in as each user and creates
+workspaces in the correct namespaces.
+
+**OpenCode Web UI (port 4096) not starting automatically:**
+The `postStart` command requires the `opencode` binary to be in PATH. If the
+image was built with the old symlink approach, the binary won't be found. Rebuild
+the image with the `/usr/local/bin` copy fix. To start manually in the meantime:
+```bash
+export PATH="/home/user/.opencode/bin:$PATH"
+nohup opencode web --port 4096 --hostname 0.0.0.0 > /tmp/opencode-web.log 2>&1 &
+```
