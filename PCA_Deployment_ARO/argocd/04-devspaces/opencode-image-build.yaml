@@ -55,7 +55,15 @@ spec:
         name: registry.redhat.io/devspaces/udi-rhel8:latest
   triggers: []
 ---
-# Grant image-puller to DevSpaces namespaces so workspaces can pull the image.
+# Grant image-puller so DevSpaces workspaces can pull the custom OpenCode image.
+#
+# DevSpaces auto-provisions namespaces with random suffixes (e.g.,
+# dev1-devspaces-wk1ug6) so static per-namespace RoleBindings don't work.
+# Instead, grant to the openshift-devspaces SA group (handles all DevSpaces
+# workloads) and to all authenticated SAs (covers user-specific namespaces).
+#
+# The setup-devspaces-users.sh script also grants image-puller per auto-
+# provisioned namespace for defense-in-depth.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -75,7 +83,7 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: devspaces-image-puller-dev1
+  name: devspaces-image-puller-authenticated
   namespace: opencode-build
   annotations:
     argocd.argoproj.io/sync-wave: "2"
@@ -85,21 +93,5 @@ roleRef:
   name: system:image-puller
 subjects:
   - kind: Group
-    name: system:serviceaccounts:dev1-devspaces
-    apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: devspaces-image-puller-dev2
-  namespace: opencode-build
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:image-puller
-subjects:
-  - kind: Group
-    name: system:serviceaccounts:dev2-devspaces
+    name: system:authenticated
     apiGroup: rbac.authorization.k8s.io

@@ -241,7 +241,20 @@ az aro show --name aro-pca-aue --resource-group aro-pca-aue-rg --query consolePr
 oc login <API_URL> --username=kubeadmin --password=<PASSWORD>
 ```
 
-### Step 5: Verify Deployment
+### Step 5: Set Up DevSpaces Users
+
+After the stack is deployed and the model is serving, create HTPasswd users
+and their DevWorkspaces. The script handles OAuth setup, namespace discovery,
+and workspace creation as each user (required for dashboard visibility).
+
+```bash
+export KUBEADMIN_PASS="<kubeadmin password>"
+./scripts/setup-devspaces-users.sh
+```
+
+> Edit the `USERS` array inside the script to add/remove developers.
+
+### Step 6: Verify Deployment
 
 ```bash
 # Check all operators
@@ -257,7 +270,7 @@ oc get servingruntime -n ai-serving
 # Check AI Gateway
 oc get gateway,httproute -n ai-serving
 
-# Check DevSpaces
+# Check DevSpaces — workspaces are in auto-provisioned namespaces
 oc get devworkspace -A
 
 # Test the model via AI Gateway
@@ -310,17 +323,18 @@ PCA_Deployment_ARO/
 │   │   ├── pvcs.yaml                   #   100Gi model cache PVC (managed-csi)
 │   │   └── tls-secret-job.yaml         #   Self-signed TLS cert for gateway
 │   ├── 04-devspaces/                   # Wave 4: Developer workspaces
-│   │   ├── devworkspaces.yaml          #   3x DevWorkspace with OpenCode image
+│   │   ├── devworkspaces.yaml          #   DevWorkspace TEMPLATE (not ArgoCD-managed)
 │   │   ├── opencode-image-build.yaml   #   BuildConfig + RBAC for custom image
 │   │   ├── devspaces-dashboard-samples.yaml  #   Dashboard landing page samples
-│   │   ├── roo-code-configmaps.yaml    #   Roo Code provider config
-│   │   └── vscode-extensions-config.yaml
+│   │   ├── vscode-extensions-config.yaml #   Pre-installs sst-dev.opencode extension
+│   │   └── roo-code-configmaps.yaml    #   Roo Code provider config
 │   └── 05-benchmarks/                  # Wave 5: Performance benchmarks
 │       └── guidellm-sweep.yaml         #   GuideLLM sweep job
 └── scripts/
     ├── create-gpu-machineset.sh        # Post-cluster H100 node provisioning
     ├── deploy-full-stack.sh            # Full stack deployment script
     ├── post-terraform-fullstack.sh     # Post-terraform automation
+    ├── setup-devspaces-users.sh        # HTPasswd IDP + DevWorkspace provisioning
     └── validate.sh                     # Post-deployment validation
 ```
 
@@ -466,12 +480,46 @@ available — both are enabled for every workspace:
 
 ### User Accounts
 
-Users authenticate via HTPasswd identity provider:
+Users authenticate via HTPasswd identity provider. Accounts are created by the
+`scripts/setup-devspaces-users.sh` script.
 
-| User | Namespace | Dashboard Login |
-|------|-----------|-----------------|
-| `Dev1` | `dev1-devspaces` | DevSpaces URL with Dev1 credentials |
-| `Dev2` | `dev2-devspaces` | DevSpaces URL with Dev2 credentials |
+| User | Dashboard Login |
+|------|-----------------|
+| `Dev1` | DevSpaces URL with Dev1 credentials |
+| `Dev2` | DevSpaces URL with Dev2 credentials |
+
+### DevSpaces Namespace Provisioning (Critical)
+
+DevSpaces auto-provisions a **unique namespace** for each user the first time
+they access the dashboard:
+
+```
+Pattern: <username>-devspaces-<random-suffix>
+Example: Dev1 → dev1-devspaces-wk1ug6
+```
+
+**DevWorkspaces CANNOT be pre-deployed into statically-named namespaces via
+ArgoCD.** The DevWorkspace controller stamps each workspace with a
+`controller.devfile.io/creator` label matching the creating user's UID. The
+dashboard only shows workspaces where this label matches the logged-in user.
+
+**Correct workspace creation procedure:**
+
+1. Create users via HTPasswd IDP (handled by `setup-devspaces-users.sh`)
+2. Each user logs in (triggers DevSpaces namespace auto-provisioning)
+3. The script discovers the auto-provisioned namespace
+4. Grants `system:image-puller` RBAC for the custom OpenCode image
+5. Logs in as each user via `oc login` and creates the DevWorkspace
+   (this sets the `controller.devfile.io/creator` label correctly)
+
+```bash
+export KUBEADMIN_PASS="<kubeadmin password>"
+./scripts/setup-devspaces-users.sh
+```
+
+> **Common mistake:** Creating workspaces as `kubeadmin` in a static namespace
+> (e.g., `dev1-devspaces`) results in workspaces that are invisible to the
+> target user in the DevSpaces dashboard.
 
 ### OpenCode Configuration
 

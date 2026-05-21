@@ -42,6 +42,27 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
+# ── Step 1c: Create DevSpaces users and workspaces ────────────────────
+step "Step 1c: Setting up DevSpaces users and workspaces..."
+if [[ -x "${SCRIPT_DIR}/setup-devspaces-users.sh" ]]; then
+  # Wait for image build to complete before creating workspaces
+  info "Waiting for OpenCode image build (up to 10 min)..."
+  for i in $(seq 1 60); do
+    BUILD_PHASE=$(oc get build -n opencode-build -l buildconfig=devspaces-opencode \
+      --sort-by='.metadata.creationTimestamp' \
+      -o jsonpath='{.items[-1].status.phase}' 2>/dev/null || echo "Unknown")
+    if [[ "${BUILD_PHASE}" == "Complete" ]]; then
+      info "OpenCode image build complete."
+      break
+    fi
+    echo "  Build phase: ${BUILD_PHASE} (${i}/60)"
+    sleep 10
+  done
+  "${SCRIPT_DIR}/setup-devspaces-users.sh"
+else
+  warn "setup-devspaces-users.sh not found. Run it manually after deployment."
+fi
+
 # ── Step 2: Wait for GPU node to be ready ──────────────────────────────
 step "Step 2: Waiting for H100 GPU node..."
 for i in $(seq 1 90); do

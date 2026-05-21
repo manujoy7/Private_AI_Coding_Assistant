@@ -1,4 +1,29 @@
-# DevWorkspace definitions for Dev1 and Dev2.
+# DevWorkspace TEMPLATE for OpenCode workspaces.
+#
+# IMPORTANT — DevSpaces Namespace Provisioning:
+#   DevWorkspaces CANNOT be pre-deployed via ArgoCD into statically-named
+#   namespaces. DevSpaces auto-provisions a unique namespace for each user
+#   the first time they log into the DevSpaces dashboard:
+#
+#     Pattern: <username>-devspaces-<random-suffix>
+#     Example: Dev1 → dev1-devspaces-wk1ug6
+#
+#   The DevWorkspace controller sets a `controller.devfile.io/creator` label
+#   to the user's UID. The dashboard ONLY shows workspaces where this label
+#   matches the logged-in user's UID. Workspaces created by kubeadmin (or
+#   any other user) will be invisible to the target user.
+#
+# Correct workspace creation procedure:
+#   1. Create users via HTPasswd IDP (see scripts/setup-devspaces-users.sh)
+#   2. Each user logs into the DevSpaces dashboard (triggers NS provisioning)
+#   3. Run scripts/setup-devspaces-users.sh which:
+#      a. Logs in as each user via `oc login`
+#      b. Discovers the auto-provisioned namespace
+#      c. Grants image-puller RBAC for the custom OpenCode image
+#      d. Creates the DevWorkspace AS the user (sets creator label correctly)
+#
+# This file is a REFERENCE TEMPLATE — it is not applied by ArgoCD.
+# The actual workspace creation is handled by the setup script.
 #
 # Each workspace includes:
 #   1. OpenCode VS Code extension (sst-dev.opencode) — auto-installed via
@@ -7,22 +32,18 @@
 #   2. OpenCode Web UI — runs on port 4096, exposed as a public HTTPS endpoint.
 #      Access via the endpoint URL in the DevSpaces dashboard.
 #
-# OpenCode config and auth are baked into the custom image (Dockerfile.opencode).
-# The postStart command launches the OpenCode Web server in the background.
-#
 # Model endpoint (routed through llm-d EPP → vLLM):
 #   https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1
 ---
 apiVersion: workspace.devfile.io/v1alpha2
 kind: DevWorkspace
 metadata:
-  name: opencode-dev1
-  namespace: dev1-devspaces
+  name: opencode-PLACEHOLDER_USERNAME
+  # namespace: Set dynamically — must be the DevSpaces auto-provisioned namespace
+  #   (e.g., dev1-devspaces-wk1ug6), NOT a statically-named namespace.
   labels:
     che.eclipse.org/devworkspace: "true"
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     che.eclipse.org/devfile-source: |
       custom:
         type: inline
@@ -54,66 +75,7 @@ spec:
             - name: NODE_TLS_REJECT_UNAUTHORIZED
               value: "0"
             - name: OPENCODE_SERVER_PASSWORD
-              value: "Dev1@PCA2026!"
-          endpoints:
-            - name: opencode-web
-              targetPort: 4096
-              exposure: public
-              protocol: https
-    commands:
-      - id: start-opencode-web
-        exec:
-          component: dev-tools
-          commandLine: |
-            nohup opencode web --port 4096 --hostname 0.0.0.0 > /tmp/opencode-web.log 2>&1 &
-            echo "OpenCode Web UI started on port 4096"
-          label: "Start OpenCode Web UI"
-    events:
-      postStart:
-        - start-opencode-web
----
-apiVersion: workspace.devfile.io/v1alpha2
-kind: DevWorkspace
-metadata:
-  name: opencode-dev2
-  namespace: dev2-devspaces
-  labels:
-    che.eclipse.org/devworkspace: "true"
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    che.eclipse.org/devfile-source: |
-      custom:
-        type: inline
-spec:
-  started: true
-  routingClass: che
-  contributions:
-    - name: editor
-      uri: "https://eclipse-che.github.io/che-plugin-registry/main/v3/plugins/che-incubator/che-code/latest/devfile.yaml"
-  template:
-    components:
-      - name: dev-tools
-        container:
-          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
-          memoryLimit: 8Gi
-          memoryRequest: 1Gi
-          cpuLimit: "4000m"
-          cpuRequest: 500m
-          mountSources: true
-          env:
-            - name: VLLM_ENDPOINT
-              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-            - name: VLLM_MODEL_ID
-              value: "Qwen/Qwen3.6-35B-A3B-FP8"
-            - name: OPENAI_API_KEY
-              value: "EMPTY"
-            - name: OPENAI_BASE_URL
-              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-            - name: NODE_TLS_REJECT_UNAUTHORIZED
-              value: "0"
-            - name: OPENCODE_SERVER_PASSWORD
-              value: "Dev2@PCA2026!"
+              value: "PLACEHOLDER_PASSWORD"
           endpoints:
             - name: opencode-web
               targetPort: 4096

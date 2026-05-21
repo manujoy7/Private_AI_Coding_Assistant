@@ -90,9 +90,19 @@ for i in $(seq 1 120); do
 done
 
 # ── Wave 4: DevSpaces ────────────────────────────────────────────────────────
-step "Wave 4: Creating DevSpaces workspaces..."
-oc apply -f "${BASE_PATH}/04-devspaces/" 2>&1 | sed 's/^/  /'
-info "DevSpaces workspaces created."
+step "Wave 4: Applying DevSpaces config (image build, dashboard samples, extensions)..."
+# Apply DevSpaces resources EXCEPT devworkspaces.yaml (which is a template only).
+# DevWorkspaces must be created PER USER via setup-devspaces-users.sh so the
+# controller.devfile.io/creator label is set correctly for dashboard visibility.
+for f in "${BASE_PATH}/04-devspaces/"*.yaml; do
+  FNAME=$(basename "$f")
+  if [[ "${FNAME}" == "devworkspaces.yaml" ]]; then
+    echo "  Skipping ${FNAME} (template only — use setup-devspaces-users.sh)"
+    continue
+  fi
+  oc apply -f "$f" 2>&1 | sed 's/^/  /'
+done
+info "DevSpaces config applied."
 
 echo ""
 info "============================================"
@@ -104,5 +114,6 @@ info ""
 info "Next steps:"
 info "  1. Verify GPU node: oc get nodes -l nvidia.com/gpu.present=true"
 info "  2. Verify model:    oc get llminferenceservice -n ai-serving"
-info "  3. Verify DevSpaces: oc get devworkspace -A"
-info "  4. Run GuideLLM:    oc apply -f ${BASE_PATH}/05-benchmarks/guidellm-sweep.yaml"
+info "  3. Create users:    ./scripts/setup-devspaces-users.sh"
+info "  4. Verify DevSpaces: oc get devworkspace -A"
+info "  5. Run GuideLLM:    oc apply -f ${BASE_PATH}/05-benchmarks/guidellm-sweep.yaml"
