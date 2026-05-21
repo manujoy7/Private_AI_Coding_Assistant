@@ -228,6 +228,9 @@ spec:
   template:
     components:
       - name: dev-tools
+        attributes:
+          che-code.eclipse.org/vscode-extensions:
+            - https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix
         container:
           image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryLimit: 8Gi

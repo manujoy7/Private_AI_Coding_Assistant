@@ -97,7 +97,7 @@ designed for multi-replica, multi-GPU scaling:
 | **vLLM** | **0.19.0 (upstream)** | Custom ServingRuntime — see [Why Upstream vLLM](#why-upstream-vllm-v0190) |
 | PyTorch | 2.10.0+cu129 | Bundled with vLLM v0.19.0 |
 | Transformers | 4.57.6 | Required >=5.1 for Qwen3.6 |
-| Model | Qwen/Qwen3.6-35B-A3B-FP8 | 35B total / 3B active MoE, FP8, 32K ctx |
+| Model | Qwen/Qwen3.6-35B-A3B-FP8 | 35B total / 3B active MoE, FP8, 256K ctx (native max) |
 | Serving | KServe RawDeployment | Via custom ServingRuntime |
 | Gateway | Data Science Gateway | Gateway API + HTTPRoute (TLS) |
 | EPP | RHOAI odh-llm-d-inference-scheduler | Prefix-cache + queue-depth scoring |
@@ -386,7 +386,7 @@ Environment variables handle non-root container constraints:
 
 - **Mode**: KServe RawDeployment (no Knative/Serverless dependency)
 - **Runtime**: `vllm-cuda-v0190`
-- **Model args**: `--model=Qwen/Qwen3.6-35B-A3B-FP8 --tensor-parallel-size=1 --max-model-len=32768`
+- **Model args**: `--model=Qwen/Qwen3.6-35B-A3B-FP8 --tensor-parallel-size=1 --max-model-len=262144`
 - **Resources per replica**: 8-16 CPU, 80-120Gi RAM, 1x NVIDIA GPU
 - **Toleration**: `nvidia.com/gpu=present:NoSchedule`
 - **Scaling**: `minReplicas: 1`, `maxReplicas: 4` (increase for more GPU nodes)
@@ -403,7 +403,7 @@ python3 -m vllm.entrypoints.openai.api_server \
   --tool-call-parser=hermes \
   --model=Qwen/Qwen3.6-35B-A3B-FP8 \
   --tensor-parallel-size=1 \
-  --max-model-len=32768
+  --max-model-len=262144
 ```
 
 > **Tool calling is required** for OpenCode's agentic features. Without

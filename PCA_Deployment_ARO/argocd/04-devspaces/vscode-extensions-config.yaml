@@ -1,5 +1,9 @@
 # Cluster-wide VS Code extension recommendations for all DevSpaces workspaces.
-# Extensions listed here auto-install from Open VSX when a workspace starts.
+# NOTE: "recommendations" only show extensions in the sidebar — they do NOT
+# auto-install. For auto-installation, use the devfile component attribute:
+#   che-code.eclipse.org/vscode-extensions:
+#     - <vsix-url>
+# This is already configured in devworkspaces.yaml and setup-devspaces-users.sh.
 ---
 apiVersion: v1
 kind: ConfigMap
