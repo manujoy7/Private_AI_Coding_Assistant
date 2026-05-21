@@ -454,7 +454,26 @@ different InferencePools.
 ## DevSpaces + OpenCode
 
 Each developer workspace runs VS Code in the browser with OpenCode pre-configured
-to use the private Qwen3.6 model through the AI Gateway.
+to use the private Qwen3.6 model through the AI Gateway. Two access modes are
+available — both are enabled for every workspace:
+
+### OpenCode Access Modes
+
+| Mode | How to Access | Description |
+|------|---------------|-------------|
+| **VS Code Extension** | `Ctrl+Esc` in editor | Opens OpenCode TUI in a split terminal panel. Context-aware — shares current editor selection. File reference shortcut: `Alt+Ctrl+K`. Extension `sst-dev.opencode` auto-installed from Open VSX. |
+| **Browser Web UI** | Click `opencode-web` endpoint URL | Full graphical web interface in a separate browser tab. Supports session management, multiple sessions. Runs on port 4096, protected by `OPENCODE_SERVER_PASSWORD`. |
+
+### User Accounts
+
+Users authenticate via HTPasswd identity provider:
+
+| User | Namespace | Dashboard Login |
+|------|-----------|-----------------|
+| `Dev1` | `dev1-devspaces` | DevSpaces URL with Dev1 credentials |
+| `Dev2` | `dev2-devspaces` | DevSpaces URL with Dev2 credentials |
+
+### OpenCode Configuration
 
 | Config | Value |
 |--------|-------|
@@ -463,6 +482,8 @@ to use the private Qwen3.6 model through the AI Gateway.
 | Model | `Qwen/Qwen3.6-35B-A3B-FP8` |
 | API Key | `EMPTY` (no auth required for cluster-internal traffic) |
 | TLS | Self-signed cert (`NODE_TLS_REJECT_UNAUTHORIZED=0`) |
+| Extension | `sst-dev.opencode` (auto-installed from Open VSX) |
+| Web UI Port | 4096 (public HTTPS endpoint) |
 
 ---
 

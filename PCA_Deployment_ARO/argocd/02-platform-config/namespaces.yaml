@@ -26,12 +26,3 @@ metadata:
     app.kubernetes.io/part-of: che.eclipse.org
   annotations:
     argocd.argoproj.io/sync-wave: "0"
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: dev3-devspaces
-  labels:
-    app.kubernetes.io/part-of: che.eclipse.org
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"

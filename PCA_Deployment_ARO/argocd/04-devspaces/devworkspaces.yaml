@@ -1,21 +1,22 @@
-# DevWorkspace definitions for each developer.
+# DevWorkspace definitions for Dev1 and Dev2.
 #
-# OpenCode configuration:
-#   OpenCode is pre-installed in the custom container image (Dockerfile.opencode).
-#   Global config (~/.config/opencode/opencode.json) baked into the image points to
-#   the cluster-internal llm-d gateway. The postStart script ensures OpenCode is
-#   ready and creates a tmux session for persistent long-running jobs.
+# Each workspace includes:
+#   1. OpenCode VS Code extension (sst-dev.opencode) — auto-installed via
+#      cluster-wide ConfigMap (vscode-extensions-config.yaml). Use Ctrl+Esc
+#      to open OpenCode in a split terminal panel.
+#   2. OpenCode Web UI — runs on port 4096, exposed as a public HTTPS endpoint.
+#      Access via the endpoint URL in the DevSpaces dashboard.
 #
-#   Environment variables OPENAI_BASE_URL and OPENAI_API_KEY are set so OpenCode
-#   can also discover the endpoint via standard OpenAI env var convention.
+# OpenCode config and auth are baked into the custom image (Dockerfile.opencode).
+# The postStart command launches the OpenCode Web server in the background.
 #
-# Model endpoint (routed through Red Hat AI Gateway / llm-d):
+# Model endpoint (routed through llm-d EPP → vLLM):
 #   https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1
 ---
 apiVersion: workspace.devfile.io/v1alpha2
 kind: DevWorkspace
 metadata:
-  name: code-workspace-1
+  name: opencode-dev1
   namespace: dev1-devspaces
   labels:
     che.eclipse.org/devworkspace: "true"
@@ -52,79 +53,29 @@ spec:
               value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
             - name: NODE_TLS_REJECT_UNAUTHORIZED
               value: "0"
-            - name: KUBEDOCK_ENABLED
-              value: "true"
-            - name: OPENCODE_CONFIG_CONTENT
-              value: |
-                {
-                  "$schema": "https://opencode.ai/config.json",
-                  "provider": {
-                    "vllm": {
-                      "npm": "@ai-sdk/openai-compatible",
-                      "name": "Private AI Gateway (Qwen3.6)",
-                      "options": {
-                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                      },
-                      "models": {
-                        "Qwen/Qwen3.6-35B-A3B-FP8": {
-                          "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                        }
-                      }
-                    }
-                  },
-                  "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-                }
+            - name: OPENCODE_SERVER_PASSWORD
+              value: "Dev1@PCA2026!"
+          endpoints:
+            - name: opencode-web
+              targetPort: 4096
+              exposure: public
+              protocol: https
     commands:
-      - id: setup-opencode
+      - id: start-opencode-web
         exec:
           component: dev-tools
           commandLine: |
-            if ! command -v opencode &>/dev/null; then
-              curl -fsSL https://opencode.ai/install | bash 2>/dev/null || true
-            fi
-            if ! command -v tmux &>/dev/null; then
-              sudo dnf install -y tmux 2>/dev/null || true
-            fi
-            mkdir -p ~/.local/share/opencode
-            cat > ~/.local/share/opencode/auth.json << 'AUTHEOF'
-            {
-              "vllm": {
-                "type": "api",
-                "key": "EMPTY"
-              }
-            }
-            AUTHEOF
-            mkdir -p ~/.config/opencode
-            cat > ~/.config/opencode/opencode.json << 'CONFEOF'
-            {
-              "$schema": "https://opencode.ai/config.json",
-              "provider": {
-                "vllm": {
-                  "npm": "@ai-sdk/openai-compatible",
-                  "name": "Private AI Gateway (Qwen3.6)",
-                  "options": {
-                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                  },
-                  "models": {
-                    "Qwen/Qwen3.6-35B-A3B-FP8": {
-                      "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                    }
-                  }
-                }
-              },
-              "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-            }
-            CONFEOF
-            echo "OpenCode setup complete. Run 'opencode' in the terminal to start."
-          label: Install and configure OpenCode
+            nohup opencode web --port 4096 --hostname 0.0.0.0 > /tmp/opencode-web.log 2>&1 &
+            echo "OpenCode Web UI started on port 4096"
+          label: "Start OpenCode Web UI"
     events:
       postStart:
-        - setup-opencode
+        - start-opencode-web
 ---
 apiVersion: workspace.devfile.io/v1alpha2
 kind: DevWorkspace
 metadata:
-  name: code-workspace-2
+  name: opencode-dev2
   namespace: dev2-devspaces
   labels:
     che.eclipse.org/devworkspace: "true"
@@ -161,180 +112,21 @@ spec:
               value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
             - name: NODE_TLS_REJECT_UNAUTHORIZED
               value: "0"
-            - name: KUBEDOCK_ENABLED
-              value: "true"
-            - name: OPENCODE_CONFIG_CONTENT
-              value: |
-                {
-                  "$schema": "https://opencode.ai/config.json",
-                  "provider": {
-                    "vllm": {
-                      "npm": "@ai-sdk/openai-compatible",
-                      "name": "Private AI Gateway (Qwen3.6)",
-                      "options": {
-                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                      },
-                      "models": {
-                        "Qwen/Qwen3.6-35B-A3B-FP8": {
-                          "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                        }
-                      }
-                    }
-                  },
-                  "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-                }
+            - name: OPENCODE_SERVER_PASSWORD
+              value: "Dev2@PCA2026!"
+          endpoints:
+            - name: opencode-web
+              targetPort: 4096
+              exposure: public
+              protocol: https
     commands:
-      - id: setup-opencode
+      - id: start-opencode-web
         exec:
           component: dev-tools
           commandLine: |
-            if ! command -v opencode &>/dev/null; then
-              curl -fsSL https://opencode.ai/install | bash 2>/dev/null || true
-            fi
-            if ! command -v tmux &>/dev/null; then
-              sudo dnf install -y tmux 2>/dev/null || true
-            fi
-            mkdir -p ~/.local/share/opencode
-            cat > ~/.local/share/opencode/auth.json << 'AUTHEOF'
-            {
-              "vllm": {
-                "type": "api",
-                "key": "EMPTY"
-              }
-            }
-            AUTHEOF
-            mkdir -p ~/.config/opencode
-            cat > ~/.config/opencode/opencode.json << 'CONFEOF'
-            {
-              "$schema": "https://opencode.ai/config.json",
-              "provider": {
-                "vllm": {
-                  "npm": "@ai-sdk/openai-compatible",
-                  "name": "Private AI Gateway (Qwen3.6)",
-                  "options": {
-                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                  },
-                  "models": {
-                    "Qwen/Qwen3.6-35B-A3B-FP8": {
-                      "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                    }
-                  }
-                }
-              },
-              "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-            }
-            CONFEOF
-            echo "OpenCode setup complete. Run 'opencode' in the terminal to start."
-          label: Install and configure OpenCode
+            nohup opencode web --port 4096 --hostname 0.0.0.0 > /tmp/opencode-web.log 2>&1 &
+            echo "OpenCode Web UI started on port 4096"
+          label: "Start OpenCode Web UI"
     events:
       postStart:
-        - setup-opencode
----
-apiVersion: workspace.devfile.io/v1alpha2
-kind: DevWorkspace
-metadata:
-  name: code-workspace-3
-  namespace: dev3-devspaces
-  labels:
-    che.eclipse.org/devworkspace: "true"
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    che.eclipse.org/devfile-source: |
-      custom:
-        type: inline
-spec:
-  started: true
-  routingClass: che
-  contributions:
-    - name: editor
-      uri: "https://eclipse-che.github.io/che-plugin-registry/main/v3/plugins/che-incubator/che-code/latest/devfile.yaml"
-  template:
-    components:
-      - name: dev-tools
-        container:
-          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
-          memoryLimit: 8Gi
-          memoryRequest: 1Gi
-          cpuLimit: "4000m"
-          cpuRequest: 500m
-          mountSources: true
-          env:
-            - name: VLLM_ENDPOINT
-              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-            - name: VLLM_MODEL_ID
-              value: "Qwen/Qwen3.6-35B-A3B-FP8"
-            - name: OPENAI_API_KEY
-              value: "EMPTY"
-            - name: OPENAI_BASE_URL
-              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-            - name: NODE_TLS_REJECT_UNAUTHORIZED
-              value: "0"
-            - name: KUBEDOCK_ENABLED
-              value: "true"
-            - name: OPENCODE_CONFIG_CONTENT
-              value: |
-                {
-                  "$schema": "https://opencode.ai/config.json",
-                  "provider": {
-                    "vllm": {
-                      "npm": "@ai-sdk/openai-compatible",
-                      "name": "Private AI Gateway (Qwen3.6)",
-                      "options": {
-                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                      },
-                      "models": {
-                        "Qwen/Qwen3.6-35B-A3B-FP8": {
-                          "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                        }
-                      }
-                    }
-                  },
-                  "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-                }
-    commands:
-      - id: setup-opencode
-        exec:
-          component: dev-tools
-          commandLine: |
-            if ! command -v opencode &>/dev/null; then
-              curl -fsSL https://opencode.ai/install | bash 2>/dev/null || true
-            fi
-            if ! command -v tmux &>/dev/null; then
-              sudo dnf install -y tmux 2>/dev/null || true
-            fi
-            mkdir -p ~/.local/share/opencode
-            cat > ~/.local/share/opencode/auth.json << 'AUTHEOF'
-            {
-              "vllm": {
-                "type": "api",
-                "key": "EMPTY"
-              }
-            }
-            AUTHEOF
-            mkdir -p ~/.config/opencode
-            cat > ~/.config/opencode/opencode.json << 'CONFEOF'
-            {
-              "$schema": "https://opencode.ai/config.json",
-              "provider": {
-                "vllm": {
-                  "npm": "@ai-sdk/openai-compatible",
-                  "name": "Private AI Gateway (Qwen3.6)",
-                  "options": {
-                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
-                  },
-                  "models": {
-                    "Qwen/Qwen3.6-35B-A3B-FP8": {
-                      "name": "Qwen3.6 35B MoE FP8 (Private AI)"
-                    }
-                  }
-                }
-              },
-              "model": "vllm/Qwen/Qwen3.6-35B-A3B-FP8"
-            }
-            CONFEOF
-            echo "OpenCode setup complete. Run 'opencode' in the terminal to start."
-          label: Install and configure OpenCode
-    events:
-      postStart:
-        - setup-opencode
+        - start-opencode-web

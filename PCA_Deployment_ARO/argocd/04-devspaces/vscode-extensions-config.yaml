@@ -1,6 +1,5 @@
 # Cluster-wide VS Code extension recommendations for all DevSpaces workspaces.
-# OpenCode runs in the terminal, not as a VS Code extension.
-# We keep lightweight editor extensions only.
+# Extensions listed here auto-install from Open VSX when a workspace starts.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -16,5 +15,7 @@ metadata:
 data:
   .vscode-extensions.json: |
     {
-      "recommendations": []
+      "recommendations": [
+        "sst-dev.opencode"
+      ]
     }

@@ -103,19 +103,3 @@ subjects:
   - kind: Group
     name: system:serviceaccounts:dev2-devspaces
     apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: devspaces-image-puller-dev3
-  namespace: opencode-build
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:image-puller
-subjects:
-  - kind: Group
-    name: system:serviceaccounts:dev3-devspaces
-    apiGroup: rbac.authorization.k8s.io

@@ -140,9 +140,8 @@ variable "devspaces_users" {
   }))
   sensitive = true
   default = [
-    { username = "dev-user1", password = "" },
-    { username = "dev-user2", password = "" },
-    { username = "dev-user3", password = "" }
+    { username = "Dev1", password = "" },
+    { username = "Dev2", password = "" }
   ]
 }
 
