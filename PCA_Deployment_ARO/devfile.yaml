@@ -40,6 +40,8 @@ components:
           targetPort: 4096
           exposure: public
           protocol: https
+          attributes:
+            cookiesAuthEnabled: true
 commands:
   - id: opencode
     exec:

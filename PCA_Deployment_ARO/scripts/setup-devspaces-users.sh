@@ -256,6 +256,8 @@ spec:
               targetPort: 4096
               exposure: public
               protocol: https
+              attributes:
+                cookiesAuthEnabled: true
     commands:
       - id: download-opencode-extension
         exec:
