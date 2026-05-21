@@ -2,7 +2,113 @@
 
 This folder contains Terraform and GitOps (ArgoCD) artifacts to deploy the
 **Private AI Code Assistant** on **Azure Red Hat OpenShift (ARO)** with an
-NVIDIA A100 GPU node for LLM inference.
+NVIDIA H100 GPU node for LLM inference.
+
+---
+
+## Architecture Overview
+
+```
+Developer (DevSpaces / OpenCode)
+  │
+  │  HTTPS (cluster-internal)
+  ▼
+Red Hat AI Gateway (llm-d)
+  │  Gateway API + HTTPRoute
+  ▼
+KServe Predictor Service (port 80)
+  │
+  ▼
+vLLM v0.19.0 (Custom ServingRuntime)
+  │  OpenAI-compatible API on port 8000
+  ▼
+Qwen/Qwen3.6-35B-A3B-FP8
+  │  FP8 quantized, 35B total / 3B active MoE
+  ▼
+NVIDIA H100 NVL 94GB HBM3
+```
+
+All client traffic flows through the Red Hat AI Gateway — DevSpaces and OpenCode
+never access the model endpoint directly. This provides a stable endpoint, TLS
+termination, and a path for future EPP-based intelligent routing.
+
+---
+
+## Component Versions
+
+### Platform
+
+| Component | Version |
+|-----------|---------|
+| Azure Red Hat OpenShift (ARO) | 4.20.15 |
+| Kubernetes | v1.33.6 |
+| RHCOS | 9.6.20260217-1 (Plow) |
+| CRI-O | 1.33.9 |
+
+### Operators
+
+| Operator | Version | Channel |
+|----------|---------|---------|
+| Red Hat OpenShift AI (RHOAI) | 3.3.1 | stable |
+| NVIDIA GPU Operator | 26.3.1 | v26.3 |
+| Node Feature Discovery (NFD) | 4.20.0 | stable |
+| Red Hat DevSpaces | 3.27.1 | stable |
+| DevWorkspace Operator | 0.40.1 | fast |
+| Red Hat OpenShift GitOps (ArgoCD) | 1.15.4 | latest |
+| Red Hat OpenShift Serverless | 1.37.1 | stable |
+| Red Hat Service Mesh | 3.3.3 | stable |
+
+### GPU / NVIDIA Stack
+
+| Component | Version |
+|-----------|---------|
+| NVIDIA Kernel Driver | 550.144.03 |
+| CUDA Toolkit (in container) | 12.9 |
+| CUDA Compat Libs | 575.57.08 |
+| GPU Hardware | NVIDIA H100 NVL 94 GB HBM3 |
+
+### AI / ML Stack
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **vLLM** | **0.19.0 (upstream)** | Custom ServingRuntime — see [Why Upstream vLLM](#why-upstream-vllm-v0190) |
+| PyTorch | 2.10.0+cu129 | Bundled with vLLM v0.19.0 |
+| Transformers | 4.57.6 | Required >=5.1 for Qwen3.6 |
+| Model | Qwen/Qwen3.6-35B-A3B-FP8 | 35B total / 3B active MoE, FP8, 32K ctx |
+| Serving | KServe RawDeployment | Via custom ServingRuntime |
+| Gateway | llm-d (Red Hat AI Gateway) | Gateway API + HTTPRoute |
+
+### IaC / CLI Tools
+
+| Tool | Version |
+|------|---------|
+| Terraform | 1.9.8 |
+| Azure CLI | 2.85.0 |
+| oc CLI | 4.21.5 |
+
+---
+
+## Why Upstream vLLM v0.19.0
+
+RHOAI 3.3.1 bundles `registry.redhat.io/rhaiis/vllm-cuda-rhel9` based on vLLM
+~0.13 with `transformers <5.x`. The Qwen3.6-35B-A3B-FP8 model uses the
+`Qwen3_5MoeForConditionalGeneration` architecture class, which requires:
+
+1. **`transformers >=5.1`** — the tokenizer and config classes for Qwen3.5-MoE
+   are not present in older versions
+2. **`vLLM >=0.18`** — native support for the Qwen3.5-MoE architecture,
+   including DeepGEMM FP8 MoE kernels and FlashAttention v3 on H100
+3. **CUDA 12.9 toolkit** — vLLM v0.19.0 ships with PyTorch 2.10 compiled against
+   CUDA 12.9. The host NVIDIA driver is 550 (CUDA 12.4), so
+   `VLLM_ENABLE_CUDA_COMPATIBILITY=1` bridges the gap using CUDA compat
+   libraries (575.57.08)
+
+A **custom `ServingRuntime`** (`vllm-cuda-v0190`) is registered in RHOAI to
+serve the model through the standard KServe RawDeployment path, making the
+model visible and manageable through the OpenShift AI dashboard.
+
+> **Note:** This custom runtime is unsupported by Red Hat. When RHOAI ships with
+> vLLM >= 0.19 and transformers >= 5.1, switch back to the bundled runtime.
 
 ---
 
@@ -17,17 +123,12 @@ NVIDIA A100 GPU node for LLM inference.
 | `oc` (OpenShift CLI) | >= 4.19 | Cluster interaction and GitOps bootstrap |
 | `jq` | >= 1.6 | JSON processing in the GPU MachineSet script |
 
-Install the Azure CLI: `brew install azure-cli` or see [aka.ms/installazurecliwindows](https://aka.ms/installazurecliwindows)
-
 ### Azure Permissions Required
 
 Your Azure account needs:
 
 - **Contributor** or **Owner** on the target subscription
 - **User Access Administrator** (for role assignments created by `az aro create`)
-
-> **Note:** `az aro create` handles Azure AD App Registration and Service Principal
-> creation internally. You do **not** need explicit AAD App Registration permissions.
 
 Register the ARO resource providers if not already registered:
 
@@ -40,18 +141,17 @@ az provider register --namespace Microsoft.Authorization --wait
 
 ### GPU Quota
 
-Request quota for `Standard NCADSv4Family` in your target region **before** deployment.
-The `Standard_NC24ads_A100_v4` requires 24 vCPUs of this family.
+Request quota for `Standard_NC40ads_H100_v5` in your target region **before**
+deployment. The H100 VM requires 40 vCPUs.
 
 ```bash
-# Check current quota
-az vm list-usage --location centralus -o table | grep -i "Standard NCADSv4"
+az vm list-usage --location australiaeast -o table | grep -i "NC40ads"
 ```
 
 ### Red Hat Prerequisites
 
 - A **Red Hat account** with an active OpenShift subscription
-- **Pull secret** downloaded from [console.redhat.com/openshift/install/pull-secret](https://console.redhat.com/openshift/install/pull-secret)
+- **Pull secret** from [console.redhat.com/openshift/install/pull-secret](https://console.redhat.com/openshift/install/pull-secret)
 
 ---
 
@@ -60,16 +160,12 @@ az vm list-usage --location centralus -o table | grep -i "Standard NCADSv4"
 | Component | Specification |
 |-----------|--------------|
 | Platform | Azure Red Hat OpenShift (ARO) |
-| OpenShift version | 4.19.24 |
-| Azure region | Central US (`centralus`) |
-| Master nodes | 3× `Standard_D8s_v5` |
-| Worker nodes | 3× `Standard_D8s_v5` |
-| GPU nodes | 1× `Standard_NC24ads_A100_v4` (NVIDIA A100 80 GB) |
-| RHOAI version | 3.3.2 (`stable-3.x` channel) |
-| AI Gateway | llm-d (GA in RHOAI 3.3) |
-| Model | `Qwen/Qwen3.6-35B-A3B-FP8` |
-| vLLM | 0.17.1 (upstream — see [Post-Deploy vLLM Upgrade](#post-deploy-vllm-0171-upgrade-required)) |
-| Storage class | `managed-csi` |
+| OpenShift version | 4.20.15 |
+| Azure region | Australia East (`australiaeast`) |
+| Master nodes | 3x `Standard_D8s_v5` |
+| Worker nodes | 3x `Standard_D8s_v5` |
+| GPU nodes | 1x `Standard_NC40ads_H100_v5` (NVIDIA H100 NVL 94 GB) |
+| Storage class | `managed-csi` (Azure Managed Disk CSI) |
 
 ---
 
@@ -89,16 +185,15 @@ cd PCA_Deployment_ARO/terraform/
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars` and fill in:
+Edit `terraform.tfvars`:
 
 | Variable | Description |
 |----------|-------------|
 | `subscription_id` | Your Azure subscription ID |
 | `pull_secret` | Red Hat pull secret (single-line JSON string) |
-| `cluster_name` | Cluster name (default: `aro-pca`) |
-| `location` | Azure region (default: `centralus`) |
-| `aro_version` | OpenShift version (default: `4.19.24`) |
-| `gitops_repo_url` | Your fork of the `Private_Code_Assistant` repo |
+| `cluster_name` | Cluster name (default: `aro-pca-aue`) |
+| `location` | Azure region (default: `australiaeast`) |
+| `gitops_repo_url` | Your fork of the `Private_AI_Coding_Assistant` repo |
 
 ### Step 3: Deploy Infrastructure with Terraform
 
@@ -108,199 +203,39 @@ terraform plan -out=aro-plan.tfplan
 terraform apply aro-plan.tfplan
 ```
 
-Terraform will execute the following phases:
-
-1. **Resource Group, VNet, and Subnets** — creates the Azure networking foundation.
-   Subnets are created without NSGs (ARO manages its own).
-2. **ARO Cluster** via `az aro create` — provisions the cluster with 3 master and
-   3 worker nodes. Service principal is created automatically. (~35–45 minutes)
-3. **Cluster Login** — retrieves kubeadmin credentials and runs `oc login`.
-4. **GPU MachineSet** — runs `scripts/create-gpu-machineset.sh` to add the A100 node
-   by cloning a worker MachineSet and patching it for Gen2 image support and GPU
-   labels/taints. (~5–15 minutes)
-5. **OpenShift GitOps Operator** — installs the GitOps operator and grants ArgoCD
-   cluster-admin permissions.
-6. **ArgoCD App-of-Apps** — deploys the root application (if `gitops_repo_url` is set)
-   which triggers all subsequent GitOps-managed resources.
+Terraform provisions: Resource Group, VNet, Subnets, ARO Cluster (~35-45 min),
+GPU MachineSet, OpenShift GitOps, and ArgoCD App-of-Apps.
 
 ### Step 4: Retrieve Cluster Credentials
 
 ```bash
-# Get the kubeadmin password
-az aro list-credentials \
-  --name aro-pca \
-  --resource-group aro-pca-rg
-
-# Get the API server URL
-az aro show \
-  --name aro-pca \
-  --resource-group aro-pca-rg \
-  --query apiserverProfile.url -o tsv
-
-# Get the web console URL
-az aro show \
-  --name aro-pca \
-  --resource-group aro-pca-rg \
-  --query consoleProfile.url -o tsv
-
-# Log in
+az aro list-credentials --name aro-pca-aue --resource-group aro-pca-aue-rg
+az aro show --name aro-pca-aue --resource-group aro-pca-aue-rg --query consoleProfile.url -o tsv
 oc login <API_URL> --username=kubeadmin --password=<PASSWORD>
 ```
 
-### Step 5: Install Node Feature Discovery (NFD)
-
-NFD is required for the NVIDIA GPU Operator to detect GPU hardware. It is **not**
-installed automatically by ArgoCD and must be installed manually:
+### Step 5: Verify Deployment
 
 ```bash
-# Install the NFD operator
-cat <<'EOF' | oc apply -f -
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: openshift-nfd
----
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: openshift-nfd
-  namespace: openshift-nfd
-spec:
-  targetNamespaces:
-    - openshift-nfd
----
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: nfd
-  namespace: openshift-nfd
-spec:
-  channel: stable
-  installPlanApproval: Automatic
-  name: nfd
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-EOF
+# Check all operators
+oc get csv -A | grep -v Succeeded
 
-# Wait for the operator to install
-oc wait --for=condition=Available deployment -l app.kubernetes.io/name=nfd-operator \
-  -n openshift-nfd --timeout=300s
+# Check GPU node
+oc get nodes -l nvidia.com/gpu.present=true
 
-# Create the NodeFeatureDiscovery instance
-cat <<'EOF' | oc apply -f -
-apiVersion: nfd.openshift.io/v1
-kind: NodeFeatureDiscovery
-metadata:
-  name: nfd-instance
-  namespace: openshift-nfd
-spec:
-  instance: ""
-  operand:
-    image: ""
-    servicePort: 12000
-  workerConfig:
-    configData: ""
-EOF
-```
+# Check model serving
+oc get inferenceservice -n ai-serving
+oc get servingruntime -n ai-serving
 
-### Step 6: Set the HuggingFace Token
+# Check AI Gateway
+oc get gateway,httproute -n ai-serving
 
-The ArgoCD manifests include a placeholder HF token. Replace it with your real token:
+# Check DevSpaces
+oc get devworkspace -A
 
-```bash
-HF_TOKEN_B64=$(echo -n "hf_your_token_here" | base64)
-
-oc patch secret hf-token -n ai-serving \
-  --type='json' \
-  -p='[{"op":"replace","path":"/data/token","value":"'"${HF_TOKEN_B64}"'"}]'
-```
-
-### Step 7: Verify ArgoCD Sync Status
-
-```bash
-# Get the ArgoCD admin password
-ARGOCD_PASS=$(oc get secret openshift-gitops-cluster -n openshift-gitops \
-  -o jsonpath='{.data.admin\.password}' | base64 -d)
-
-# Get the ArgoCD route
-ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \
-  -o jsonpath='{.spec.host}')
-
-echo "ArgoCD UI: https://${ARGOCD_URL}"
-echo "Username: admin"
-echo "Password: ${ARGOCD_PASS}"
-```
-
-Wait for all ArgoCD applications to sync:
-
-```bash
-oc get applications -n openshift-gitops
-```
-
-Expected applications: `pca-root`, `pca-operators`, `pca-platform-config`,
-`pca-ai-serving`, `pca-devspaces`, `leader-worker-set`, `cert-manager`.
-
----
-
-## Post-Deploy: vLLM 0.17.1 Upgrade (Required)
-
-The `Qwen3.6-35B-A3B-FP8` model uses the `qwen3_5_moe` architecture, which requires
-vLLM >= 0.17.0. RHOAI 3.3.2 ships vLLM 0.13.0, so a manual image override is needed.
-
-**This step must be performed after the initial ArgoCD deployment completes and the
-LLMInferenceService pod is created (it will be in CrashLoopBackOff).**
-
-```bash
-# 1. Scale down the RHOAI operator to prevent reconciliation
-oc scale deployment rhods-operator -n redhat-ods-operator --replicas=0
-
-# 2. Scale down the KServe controller
-oc scale deployment kserve-controller-manager -n redhat-ods-applications --replicas=0
-
-# 3. Update KServe ConfigMaps to use the upstream vLLM image
-#    (prevents reconciliation from reverting the image on pod restarts)
-oc patch configmap kserve-parameters -n redhat-ods-applications \
-  --type=merge -p '{"data":{"vllmImageTag":"vllm/vllm-openai:v0.17.1"}}'
-
-oc patch configmap odh-model-controller-parameters -n redhat-ods-applications \
-  --type=merge -p '{"data":{"vllmImageTag":"vllm/vllm-openai:v0.17.1"}}'
-
-# 4. Patch the vLLM deployment to use the upstream image
-oc set image deployment/qwen36-35b-kserve -n ai-serving \
-  main=vllm/vllm-openai:v0.17.1
-
-# 5. Set max-model-len and GPU memory utilization
-oc set env deployment/qwen36-35b-kserve -n ai-serving \
-  VLLM_ADDITIONAL_ARGS="--max-model-len 65536 --gpu-memory-utilization 0.90"
-
-# 6. Wait for the pod to restart and verify it loads successfully
-oc rollout status deployment/qwen36-35b-kserve -n ai-serving --timeout=600s
-oc logs -f deployment/qwen36-35b-kserve -n ai-serving -c main --tail=50
-```
-
-Look for `INFO: Application startup complete` in the logs.
-
-### Delete RHOAI Webhooks (if LLMInferenceService operations fail)
-
-After scaling down the RHOAI operator, some admission webhooks may block operations
-on `LLMInferenceService` resources. Delete them if needed:
-
-```bash
-oc get validatingwebhookconfigurations,mutatingwebhookconfigurations | grep llmisvc
-# Delete any webhooks with "llmisvc" in the name that reference the scaled-down operator
-oc delete validatingwebhookconfiguration <name>
-oc delete mutatingwebhookconfiguration <name>
-```
-
-### Test the Inference Endpoint
-
-```bash
-# Via the llm-d AI Gateway (cluster-internal)
-GATEWAY_IP=$(oc get svc -n ai-serving \
-  -l gateway.networking.k8s.io/gateway-name=llm-d-gateway \
-  -o jsonpath='{.items[0].spec.clusterIP}')
-
-curl -sk https://${GATEWAY_IP}/v1/chat/completions \
+# Test the model via AI Gateway
+GATEWAY_SVC="llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local"
+curl -sk https://${GATEWAY_SVC}/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen3.6-35B-A3B-FP8",
@@ -309,193 +244,184 @@ curl -sk https://${GATEWAY_IP}/v1/chat/completions \
   }'
 ```
 
-> **Note:** This workaround is unsupported by Red Hat. When RHOAI ships with
-> vLLM >= 0.17, this manual step will no longer be necessary.
-
 ---
 
 ## GitOps Structure
 
-ArgoCD manages the platform in four sync waves:
+ArgoCD manages the platform in five sync waves:
 
 ```
 PCA_Deployment_ARO/
 ├── terraform/                  # Azure infrastructure
-│   ├── main.tf                 # RG, VNet, subnets, ARO cluster (via az aro create),
-│   │                           # GPU MachineSet, oc login
+│   ├── main.tf                 # RG, VNet, subnets, ARO cluster, GPU MachineSet
 │   ├── gitops-bootstrap.tf     # OpenShift GitOps operator + App-of-Apps
 │   ├── variables.tf            # Input variables with defaults
-│   ├── versions.tf             # Provider versions (azurerm ~> 4.0, null >= 3.0)
+│   ├── versions.tf             # Provider versions
 │   ├── outputs.tf              # Credential retrieval commands
 │   └── terraform.tfvars.example
 ├── argocd/
-│   ├── 00-app-of-apps.yaml            # Root ArgoCD application (AppProject + 4 child apps)
+│   ├── 00-app-of-apps.yaml            # Root ArgoCD application
 │   ├── 01-operators/                   # Wave 1: Operator subscriptions
-│   │   ├── subscriptions.yaml          #   RHOAI 3.3.2, Service Mesh 3.x, Serverless,
-│   │   │                               #   NVIDIA GPU Operator v24.9, DevSpaces
-│   │   ├── nvidia-cluster-policy.yaml  #   GPU Operator ClusterPolicy (DTK driver)
-│   │   ├── leader-worker-set.yaml      #   LWS from llm-d-playbook
+│   │   ├── subscriptions.yaml          #   RHOAI, Service Mesh, Serverless, GPU Op, DevSpaces
+│   │   ├── nvidia-cluster-policy.yaml  #   GPU Operator ClusterPolicy
+│   │   ├── leader-worker-set.yaml      #   LWS controller (llm-d dependency)
 │   │   ├── lws-operator-cr.yaml        #   LWS operator instance
-│   │   └── cert-manager.yaml           #   cert-manager from llm-d-playbook
+│   │   └── cert-manager.yaml           #   cert-manager (llm-d dependency)
 │   ├── 02-platform-config/             # Wave 2: Platform configuration
 │   │   ├── namespaces.yaml             #   ai-serving, dev1/2/3-devspaces
-│   │   ├── datasciencecluster.yaml     #   DSC with KServe Headed mode
+│   │   ├── datasciencecluster.yaml     #   DSC with KServe Managed mode
 │   │   ├── checluster.yaml             #   DevSpaces CheCluster instance
-│   │   ├── hf-token-placeholder.yaml   #   HuggingFace token secret (placeholder)
+│   │   ├── hf-token-placeholder.yaml   #   HuggingFace token secret
 │   │   └── rbac.yaml                   #   RoleBindings for dev users
 │   ├── 03-ai-serving/                  # Wave 3: AI serving stack
-│   │   ├── pvcs.yaml                   #   100Gi model cache (managed-csi)
-│   │   ├── llminferenceservice.yaml    #   Qwen3.6-35B-A3B-FP8 on A100
-│   │   ├── llm-d-gateway.yaml          #   Gateway + HTTPRoute + DestinationRule
+│   │   ├── llminferenceservice.yaml    #   PVC + HardwareProfile + ServingRuntime +
+│   │   │                               #   InferenceService (KServe RawDeployment)
+│   │   ├── llm-d-gateway.yaml          #   Gateway API Gateway + HTTPRoute
+│   │   ├── pvcs.yaml                   #   100Gi model cache PVC (managed-csi)
 │   │   └── tls-secret-job.yaml         #   Self-signed TLS cert for gateway
-│   └── 04-devspaces/                   # Wave 4: Developer workspaces
-│       ├── devworkspaces.yaml          #   3× DevWorkspace with VS Code extensions
-│       ├── roo-code-configmaps.yaml    #   Roo Code provider config
-│       └── vscode-extensions-config.yaml  # VS Code extension recommendations
+│   ├── 04-devspaces/                   # Wave 4: Developer workspaces
+│   │   ├── devworkspaces.yaml          #   3x DevWorkspace with OpenCode config
+│   │   ├── roo-code-configmaps.yaml    #   Roo Code provider config
+│   │   └── vscode-extensions-config.yaml
+│   └── 05-benchmarks/                  # Wave 5: Performance benchmarks
+│       └── guidellm-sweep.yaml         #   GuideLLM sweep job
 └── scripts/
-    ├── create-gpu-machineset.sh        # Post-cluster A100 node provisioning
+    ├── create-gpu-machineset.sh        # Post-cluster H100 node provisioning
+    ├── deploy-full-stack.sh            # Full stack deployment script
+    ├── post-terraform-fullstack.sh     # Post-terraform automation
     └── validate.sh                     # Post-deployment validation
 ```
 
-### ArgoCD Applications
-
-| Application | Sync Wave | Content |
-|-------------|-----------|---------|
-| `pca-operators` | 1 | RHOAI, Service Mesh, Serverless, GPU Operator, DevSpaces subscriptions |
-| `pca-platform-config` | 2 | DSC, CheCluster, namespaces, RBAC, HF token |
-| `pca-ai-serving` | 3 | LLMInferenceService, llm-d Gateway, model cache PVC, TLS cert |
-| `pca-devspaces` | 4 | DevWorkspaces with AI extension configuration |
-| `leader-worker-set` | 1 | LWS controller (from `llm-d-playbook`) |
-| `cert-manager` | 1 | cert-manager (from `llm-d-playbook`) |
-
 ---
 
-## GPU Node Details
+## Key Deployment Artifacts
 
-The NVIDIA A100 MachineSet is created by `scripts/create-gpu-machineset.sh` after
-cluster deployment. The script:
+### HardwareProfile (`nvidia-h100-gpu`)
 
-1. Discovers the cluster `infra_id` from the OpenShift infrastructure object
-2. Clones an existing worker MachineSet as a template
-3. Patches it for `Standard_NC24ads_A100_v4` with **Gen2 image SKU** (required for A100)
-4. Adds GPU labels (`nvidia.com/gpu.present=true`) and taints (`nvidia.com/gpu:NoSchedule`)
-5. Applies the new MachineSet and waits for the node to become ready
+Registered in `redhat-ods-applications`, makes the H100 GPU visible in the
+RHOAI dashboard when deploying models. Defines CPU (4-16), Memory (40-120Gi),
+and GPU (1x `nvidia.com/gpu`) resource bounds.
 
-The Gen2 image SKU is derived dynamically from the existing worker SKU
-(e.g., `aro_419` → `419-v2`). A100 VMs require Hyper-V Generation 2.
+### Custom ServingRuntime (`vllm-cuda-v0190`)
 
-### Scaling GPU Nodes
+| Field | Value |
+|-------|-------|
+| Image | `vllm/vllm-openai:v0.19.0` |
+| Entrypoint | `python3 -m vllm.entrypoints.openai.api_server` |
+| Model format | vLLM |
+| Protocol | REST (OpenAI-compatible) |
+| CUDA compat | `VLLM_ENABLE_CUDA_COMPATIBILITY=1` + `LD_LIBRARY_PATH` |
+| Cache | PVC-backed (`/model-cache`) for persistent model weights and JIT kernels |
+| Probes | Startup: 60min tolerance, Readiness: 10s, Liveness: 30s |
 
-```bash
-# Scale to 0 (stop GPU billing)
-oc scale machineset <infra_id>-gpu-a100 -n openshift-machine-api --replicas=0
+Environment variables handle non-root container constraints:
 
-# Scale back to 1
-oc scale machineset <infra_id>-gpu-a100 -n openshift-machine-api --replicas=1
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `HF_HOME` | `/model-cache` | HuggingFace cache on PVC |
+| `TRITON_CACHE_DIR` | `/model-cache/triton-cache` | Triton MoE kernel cache on PVC |
+| `XDG_CACHE_HOME` | `/model-cache/xdg-cache` | General cache on PVC |
+| `HOME` | `/tmp` | Writable home for non-root user |
+| `VLLM_ENABLE_CUDA_COMPATIBILITY` | `1` | Bridge CUDA 12.4 driver ↔ 12.9 toolkit |
+| `LD_LIBRARY_PATH` | `/usr/local/cuda/compat:...` | Load CUDA compat libs (575.57.08) |
 
-# Monitor
-oc get machineset -n openshift-machine-api
-oc get nodes -l nvidia.com/gpu.present=true
-```
+### InferenceService (`qwen36-vllm`)
 
----
+- **Mode**: KServe RawDeployment (no Knative/Serverless dependency)
+- **Runtime**: `vllm-cuda-v0190`
+- **Model args**: `--model=Qwen/Qwen3.6-35B-A3B-FP8 --tensor-parallel-size=1 --max-model-len=32768`
+- **Resources**: 8-16 CPU, 80-120Gi RAM, 1x NVIDIA GPU
+- **Toleration**: `nvidia.com/gpu=present:NoSchedule`
 
-## AI Gateway Configuration
+### Model Cache PVC (`model-cache`)
 
-The llm-d AI Gateway uses an Istio `Gateway` with a self-signed TLS certificate.
-The `HTTPRoute` forwards `/v1/*` traffic directly to the vLLM workload `Service`
-(not via `InferencePool`), which is necessary for compatibility with the custom
-vLLM 0.17.1 runtime.
+100Gi `managed-csi` PVC stores HuggingFace model weights (~35GB), Triton JIT
+kernels, and DeepGEMM warmup artifacts. Survives pod restarts to avoid
+re-downloading the model and re-compiling kernels (~15 min saved on restart).
 
-An Istio `DestinationRule` provides TLS origination to the vLLM backend, which
-serves over HTTPS using KServe-injected certificates.
+### AI Gateway (`llm-d-gateway`)
+
+Gateway API `Gateway` with HTTPS listener (self-signed TLS) and `HTTPRoute`
+routing all `/v1` traffic to the KServe predictor service.
 
 **Cluster-internal endpoint:**
-
 ```
 https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1
 ```
 
 ---
 
-## DevSpaces + AI Extensions
+## DevSpaces + OpenCode
 
-Each developer workspace includes VS Code in the browser with:
+Each developer workspace runs VS Code in the browser with OpenCode pre-configured
+to use the private Qwen3.6 model through the AI Gateway.
 
-| Extension | Configuration |
-|-----------|--------------|
-| **Continue** | Pre-configured via ConfigMap (`config.yaml` mounted at `/home/user/.continue`) |
-| **Roo Code** | Pre-configured via ConfigMap (`provider_profiles.json` with OpenAI-compatible provider) |
-| **Cline** | Requires one-time manual configuration in the UI (settings stored in VS Code globalState) |
-
-### Cline Manual Setup
-
-In the Cline extension UI, configure:
-
-| Field | Value |
-|-------|-------|
-| Provider | OpenAI Compatible |
+| Config | Value |
+|--------|-------|
+| Provider | OpenAI-compatible (vLLM) |
 | Base URL | `https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1` |
 | Model | `Qwen/Qwen3.6-35B-A3B-FP8` |
-| API Key | _(leave empty)_ |
+| API Key | `EMPTY` (no auth required for cluster-internal traffic) |
+| TLS | Self-signed cert (`NODE_TLS_REJECT_UNAUTHORIZED=0`) |
+
+---
+
+## Benchmark Results
+
+GuideLLM sweep results for Qwen3.6-35B-A3B-FP8 on H100 NVL:
+
+| Workload | Prompt Tokens | Output Tokens | Peak Throughput (tok/s) | Sync Latency (s) | Sync TTFT (ms) |
+|----------|--------------|---------------|----------------------|-------------------|----------------|
+| Code Completion | 256 | 128 | 4,512 | 0.70 | 36 |
+| Code Generation | 1,024 | 512 | 12,790 | 2.78 | 83 |
+| Code Review | 4,096 | 1,024 | 16,133 | 5.59 | 157 |
+| File Generation | 8,192 | 2,048 | 13,976 | 11.15 | 208 |
+
+Full results: [`testresults_h100.md`](../testresults_h100.md)
+
+---
+
+## Scaling GPU Nodes
+
+```bash
+# Scale to 0 (stop GPU billing)
+oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=0
+
+# Scale back to 1
+oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=1
+```
 
 ---
 
 ## Destroying the Cluster
 
 ```bash
-# Delete the ARO cluster (takes 15-20 minutes)
-az aro delete --name aro-pca --resource-group aro-pca-rg --yes
-
-# After cluster deletion, clean up the resource group
-az group delete --name aro-pca-rg --yes --no-wait
-
-# Or use Terraform (if state file is available)
-cd PCA_Deployment_ARO/terraform/
-terraform destroy
+az aro delete --name aro-pca-aue --resource-group aro-pca-aue-rg --yes
+az group delete --name aro-pca-aue-rg --yes --no-wait
 ```
 
 ---
 
 ## Troubleshooting
 
-**ARO cluster creation fails with "InsufficientQuota":**
-Request `Standard NCADSv4Family` quota in your target region via
-Azure Portal → Quotas → Compute. The `Standard_NC24ads_A100_v4` requires 24 vCPUs.
+**vLLM pod stuck in startup (DeepGEMM warmup):**
+First launch compiles ~2,785 DeepGEMM MoE kernels via JIT (~10-15 min).
+Subsequent restarts are fast when using PVC-backed cache. The startup probe
+allows up to 60 minutes.
 
-**GPU node stuck in Provisioning:**
-Check for Gen2 image SKU issues — A100 VMs require Hyper-V Generation 2.
-The MachineSet script handles this automatically, but verify with:
-```bash
-oc describe machine -n openshift-machine-api | grep -A 10 "Message"
-```
+**GPU node taint preventing pod scheduling:**
+The H100 node has taint `nvidia.com/gpu=present:NoSchedule`. The InferenceService
+includes the matching toleration. If deploying custom pods, add the toleration.
 
-**NVIDIA GPU driver pods not scheduling:**
-Ensure NFD (Node Feature Discovery) is installed and the `NodeFeatureDiscovery` CR
-exists. Without NFD, the GPU Operator cannot detect GPU hardware.
+**CUDA driver version mismatch:**
+The host runs NVIDIA driver 550 (CUDA 12.4) but vLLM v0.19.0 needs CUDA 12.9.
+`VLLM_ENABLE_CUDA_COMPATIBILITY=1` and the compat libs (575.57.08) bridge this gap.
+If you see CUDA errors, verify `LD_LIBRARY_PATH` includes `/usr/local/cuda/compat`.
 
-**vLLM pod CrashLoopBackOff with "qwen3_5_moe" error:**
-This means the vLLM 0.17.1 upgrade was not applied. Follow the
-[Post-Deploy vLLM Upgrade](#post-deploy-vllm-0171-upgrade-required) steps.
+**AI Gateway returns 503:**
+Check that the KServe predictor pod is Ready and the HTTPRoute points to
+`qwen36-vllm-predictor` service on port 80.
 
-**vLLM pod OOM-killed (exit code 137):**
-Reduce `--max-model-len` in `VLLM_ADDITIONAL_ARGS`. With 90% GPU memory utilization,
-65536 tokens fits on A100 80 GB. The model's default 262144 context will OOM.
-
-**AI Gateway returns "upstream connect error":**
-Verify the `DestinationRule` for TLS origination exists in the `ai-serving` namespace.
-The vLLM backend serves over HTTPS (KServe-injected certs), so the gateway must
-originate TLS to the backend.
-
-**NSG error during ARO cluster creation:**
-ARO requires subnets with no pre-attached Network Security Groups. If you see
-"A Network Security Group is already assigned to this subnet", detach the NSG
-from both subnets before retrying.
-
-**LLMInferenceService operations blocked by webhooks:**
-After scaling down the RHOAI operator, admission webhooks may block create/delete
-operations on `LLMInferenceService` resources. Delete the stale webhooks:
-```bash
-oc get validatingwebhookconfigurations,mutatingwebhookconfigurations | grep llmisvc
-oc delete validatingwebhookconfiguration <name>
-```
+**Model download slow or failing:**
+The model-cache PVC persists downloads across restarts. If HuggingFace is rate-limited,
+set `HF_TOKEN` in the container environment or the `hf-token` secret.

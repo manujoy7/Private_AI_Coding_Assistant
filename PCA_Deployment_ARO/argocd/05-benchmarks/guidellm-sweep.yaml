@@ -46,7 +46,7 @@ spec:
             - name: HOME
               value: "/tmp"
             - name: GUIDELLM_TARGET
-              value: "http://qwen36-vllm:8000"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local"
             - name: GUIDELLM_MODEL
               value: "Qwen/Qwen3.6-35B-A3B-FP8"
           command:

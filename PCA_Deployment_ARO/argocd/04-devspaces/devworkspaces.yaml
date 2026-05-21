@@ -9,7 +9,7 @@
 #   Environment variables OPENAI_BASE_URL and OPENAI_API_KEY are set so OpenCode
 #   can also discover the endpoint via standard OpenAI env var convention.
 #
-# Model endpoint (cluster-internal HTTPS, all traffic stays inside OpenShift):
+# Model endpoint (routed through Red Hat AI Gateway / llm-d):
 #   https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1
 ---
 apiVersion: workspace.devfile.io/v1alpha2
@@ -43,13 +43,15 @@ spec:
           mountSources: true
           env:
             - name: VLLM_ENDPOINT
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
             - name: VLLM_MODEL_ID
               value: "Qwen/Qwen3.6-35B-A3B-FP8"
             - name: OPENAI_API_KEY
               value: "EMPTY"
             - name: OPENAI_BASE_URL
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
             - name: KUBEDOCK_ENABLED
               value: "true"
             - name: OPENCODE_CONFIG_CONTENT
@@ -61,7 +63,7 @@ spec:
                       "npm": "@ai-sdk/openai-compatible",
                       "name": "Private AI Gateway (Qwen3.6)",
                       "options": {
-                        "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                       },
                       "models": {
                         "Qwen/Qwen3.6-35B-A3B-FP8": {
@@ -101,7 +103,7 @@ spec:
                   "npm": "@ai-sdk/openai-compatible",
                   "name": "Private AI Gateway (Qwen3.6)",
                   "options": {
-                    "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                   },
                   "models": {
                     "Qwen/Qwen3.6-35B-A3B-FP8": {
@@ -150,13 +152,15 @@ spec:
           mountSources: true
           env:
             - name: VLLM_ENDPOINT
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
             - name: VLLM_MODEL_ID
               value: "Qwen/Qwen3.6-35B-A3B-FP8"
             - name: OPENAI_API_KEY
               value: "EMPTY"
             - name: OPENAI_BASE_URL
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
             - name: KUBEDOCK_ENABLED
               value: "true"
             - name: OPENCODE_CONFIG_CONTENT
@@ -168,7 +172,7 @@ spec:
                       "npm": "@ai-sdk/openai-compatible",
                       "name": "Private AI Gateway (Qwen3.6)",
                       "options": {
-                        "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                       },
                       "models": {
                         "Qwen/Qwen3.6-35B-A3B-FP8": {
@@ -208,7 +212,7 @@ spec:
                   "npm": "@ai-sdk/openai-compatible",
                   "name": "Private AI Gateway (Qwen3.6)",
                   "options": {
-                    "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                   },
                   "models": {
                     "Qwen/Qwen3.6-35B-A3B-FP8": {
@@ -257,13 +261,15 @@ spec:
           mountSources: true
           env:
             - name: VLLM_ENDPOINT
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
             - name: VLLM_MODEL_ID
               value: "Qwen/Qwen3.6-35B-A3B-FP8"
             - name: OPENAI_API_KEY
               value: "EMPTY"
             - name: OPENAI_BASE_URL
-              value: "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
             - name: KUBEDOCK_ENABLED
               value: "true"
             - name: OPENCODE_CONFIG_CONTENT
@@ -275,7 +281,7 @@ spec:
                       "npm": "@ai-sdk/openai-compatible",
                       "name": "Private AI Gateway (Qwen3.6)",
                       "options": {
-                        "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                        "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                       },
                       "models": {
                         "Qwen/Qwen3.6-35B-A3B-FP8": {
@@ -315,7 +321,7 @@ spec:
                   "npm": "@ai-sdk/openai-compatible",
                   "name": "Private AI Gateway (Qwen3.6)",
                   "options": {
-                    "baseURL": "http://qwen36-vllm.ai-serving.svc.cluster.local:8000/v1"
+                    "baseURL": "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
                   },
                   "models": {
                     "Qwen/Qwen3.6-35B-A3B-FP8": {

@@ -1,7 +1,9 @@
-# Dedicated llm-d Gateway for internal cluster routing through EPP.
-# Extensions use this Gateway's ClusterIP (never the external ELB).
+# Red Hat AI Gateway (llm-d) for internal cluster routing.
+# All client traffic (DevSpaces, OpenCode) reaches the model through this
+# Gateway — never directly to the model pod. This provides a stable endpoint,
+# TLS termination, and a path for future EPP-based intelligent routing.
 #
-# The resulting internal DNS endpoint is:
+# Internal DNS endpoint:
 #   https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -27,8 +29,8 @@ spec:
         namespaces:
           from: Same
 ---
-# HTTPRoute: routes inference traffic through InferencePool (EPP)
-# The InferencePool name is derived from LLMInferenceService: <name>-inference-pool
+# HTTPRoute: routes all /v1 inference traffic to the KServe predictor service.
+# The KServe predictor service (port 80) proxies to the vLLM container (port 8000).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -47,51 +49,12 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /v1/chat/completions
-      backendRefs:
-        - group: inference.networking.k8s.io
-          kind: InferencePool
-          name: qwen36-35b-inference-pool
-          port: 8000
-          weight: 1
-      timeouts:
-        backendRequest: "0s"
-        request: "0s"
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1/completions
-      backendRefs:
-        - group: inference.networking.k8s.io
-          kind: InferencePool
-          name: qwen36-35b-inference-pool
-          port: 8000
-          weight: 1
-      timeouts:
-        backendRequest: "0s"
-        request: "0s"
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1/models
+            value: /v1
       backendRefs:
         - group: ""
           kind: Service
-          name: qwen36-35b-kserve-workload-svc
-          port: 8000
-          weight: 1
-      timeouts:
-        backendRequest: "0s"
-        request: "0s"
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1
-      backendRefs:
-        - group: inference.networking.k8s.io
-          kind: InferencePool
-          name: qwen36-35b-inference-pool
-          port: 8000
+          name: qwen36-vllm-predictor
+          port: 80
           weight: 1
       timeouts:
         backendRequest: "0s"
