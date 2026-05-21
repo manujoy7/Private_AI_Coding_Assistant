@@ -228,9 +228,6 @@ spec:
   template:
     components:
       - name: dev-tools
-        attributes:
-          che-code.eclipse.org/vscode-extensions:
-            - https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix
         container:
           image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryLimit: 8Gi
@@ -251,12 +248,23 @@ spec:
               value: "0"
             - name: OPENCODE_SERVER_PASSWORD
               value: "${PASSWORD}"
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/opencode-ext/sst-dev.opencode.vsix"
           endpoints:
             - name: opencode-web
               targetPort: 4096
               exposure: public
               protocol: https
     commands:
+      - id: download-opencode-extension
+        exec:
+          component: dev-tools
+          commandLine: |
+            mkdir -p /tmp/opencode-ext
+            curl -fsSL "https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix" \
+              --location -o /tmp/opencode-ext/sst-dev.opencode.vsix
+            echo "OpenCode extension downloaded"
+          label: "Download OpenCode Extension"
       - id: start-opencode-web
         exec:
           component: dev-tools
@@ -266,6 +274,7 @@ spec:
           label: "Start OpenCode Web UI"
     events:
       postStart:
+        - download-opencode-extension
         - start-opencode-web
 WSEOF
 

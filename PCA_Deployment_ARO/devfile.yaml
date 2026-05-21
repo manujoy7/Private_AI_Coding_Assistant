@@ -2,14 +2,14 @@ schemaVersion: 2.2.2
 metadata:
   name: opencode-private-ai
   displayName: "OpenCode - Private AI Code Assistant"
-  description: "AI-powered coding workspace with OpenCode pre-configured to use the private Qwen3.6 model via the llm-d AI Gateway. Includes VS Code extension (Ctrl+Esc) and browser-based Web UI (port 4096). No external API keys required."
+  description: "AI-powered coding workspace with OpenCode pre-configured to use the private Qwen3.6 model via the llm-d AI Gateway. Includes VS Code extension (auto-installed via DEFAULT_EXTENSIONS) and browser-based Web UI (port 4096). No external API keys required."
   icon: https://opencode.ai/favicon.ico
   tags:
     - AI
     - OpenCode
     - Private
     - Qwen3.6
-  version: 1.1.0
+  version: 1.2.0
 components:
   - name: dev-tools
     container:
@@ -33,6 +33,8 @@ components:
           value: "0"
         - name: OPENCODE_SERVER_PASSWORD
           value: "changeme"
+        - name: DEFAULT_EXTENSIONS
+          value: "/tmp/opencode-ext/sst-dev.opencode.vsix"
       endpoints:
         - name: opencode-web
           targetPort: 4096
@@ -48,6 +50,15 @@ commands:
       group:
         kind: run
         isDefault: true
+  - id: download-opencode-extension
+    exec:
+      label: "Download OpenCode Extension"
+      component: dev-tools
+      commandLine: |
+        mkdir -p /tmp/opencode-ext
+        curl -fsSL "https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix" \
+          --location -o /tmp/opencode-ext/sst-dev.opencode.vsix
+        echo "OpenCode extension downloaded"
   - id: start-opencode-web
     exec:
       label: "Start OpenCode Web UI"
@@ -57,4 +68,5 @@ commands:
         echo "OpenCode Web UI started on port 4096"
 events:
   postStart:
+    - download-opencode-extension
     - start-opencode-web

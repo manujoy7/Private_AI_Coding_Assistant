@@ -326,7 +326,7 @@ PCA_Deployment_ARO/
 │   │   ├── devworkspaces.yaml          #   DevWorkspace TEMPLATE (not ArgoCD-managed)
 │   │   ├── opencode-image-build.yaml   #   BuildConfig + RBAC for custom image
 │   │   ├── devspaces-dashboard-samples.yaml  #   Dashboard landing page samples
-│   │   ├── vscode-extensions-config.yaml #   Pre-installs sst-dev.opencode extension
+│   │   ├── vscode-extensions-config.yaml #   VS Code extension recommendations (sidebar hint only)
 │   │   └── roo-code-configmaps.yaml    #   Roo Code provider config
 │   └── 05-benchmarks/                  # Wave 5: Performance benchmarks
 │       └── guidellm-sweep.yaml         #   GuideLLM sweep job
@@ -475,7 +475,7 @@ available — both are enabled for every workspace:
 
 | Mode | How to Access | Description |
 |------|---------------|-------------|
-| **VS Code Extension** | `Ctrl+Esc` in editor | Opens OpenCode TUI in a split terminal panel. Context-aware — shares current editor selection. File reference shortcut: `Alt+Ctrl+K`. Extension `sst-dev.opencode` auto-installed from Open VSX. |
+| **VS Code Extension** | `Ctrl+Esc` in editor | Opens OpenCode TUI in a split terminal panel. Context-aware — shares current editor selection. File reference shortcut: `Alt+Ctrl+K`. Extension `sst-dev.opencode` auto-installed via `DEFAULT_EXTENSIONS` env var (official CheCode mechanism — `.vsix` downloaded in `postStart`, then installed by the editor at startup). |
 | **Browser Web UI** | Click `opencode-web` endpoint URL | Full graphical web interface in a separate browser tab. Supports session management, multiple sessions. Runs on port 4096, protected by `OPENCODE_SERVER_PASSWORD`. |
 
 ### User Accounts
@@ -530,7 +530,7 @@ export KUBEADMIN_PASS="<kubeadmin password>"
 | Model | `Qwen/Qwen3.6-35B-A3B-FP8` |
 | API Key | `EMPTY` (no auth required for cluster-internal traffic) |
 | TLS | Self-signed cert (`NODE_TLS_REJECT_UNAUTHORIZED=0`) |
-| Extension | `sst-dev.opencode` (auto-installed from Open VSX) |
+| Extension | `sst-dev.opencode` (auto-installed via `DEFAULT_EXTENSIONS` env var — see [CheCode docs](https://eclipse.dev/che/docs/stable/administration-guide/default-extensions-for-microsoft-visual-studio-code/)) |
 | Web UI Port | 4096 (public HTTPS endpoint) |
 
 ### Custom OpenCode Image
@@ -695,6 +695,23 @@ only shows workspaces where this label matches the logged-in user. Common causes
 
 Fix: Run `scripts/setup-devspaces-users.sh` which logs in as each user and creates
 workspaces in the correct namespaces.
+
+**OpenCode VS Code extension not auto-installed:**
+The extension is installed via the `DEFAULT_EXTENSIONS` env var — the only reliable
+auto-install mechanism in CheCode/DevSpaces. The `postStart` command downloads the
+`.vsix` from Open VSX to `/tmp/opencode-ext/`, and the `DEFAULT_EXTENSIONS` env var
+tells CheCode to install it at editor startup. Other mechanisms that do NOT work:
+- `vscode-extensions-config.yaml` with `recommendations` — only shows the extension
+  in the sidebar, does not auto-install
+- `che-code.eclipse.org/vscode-extensions` devfile attribute — unreliable, often
+  silently ignored by the DevWorkspace controller
+
+If the extension is missing, check: (1) the `postStart` download succeeded
+(`ls /tmp/opencode-ext/`), (2) the `DEFAULT_EXTENSIONS` env var is set in the
+container, (3) the workspace was fully restarted (not just reconnected). To force
+reinstall: delete the workspace and recreate it.
+
+Reference: https://eclipse.dev/che/docs/stable/administration-guide/default-extensions-for-microsoft-visual-studio-code/
 
 **OpenCode Web UI (port 4096) not starting automatically:**
 The `postStart` command requires the `opencode` binary to be in PATH. If the

@@ -1,9 +1,10 @@
 # Cluster-wide VS Code extension recommendations for all DevSpaces workspaces.
-# NOTE: "recommendations" only show extensions in the sidebar — they do NOT
-# auto-install. For auto-installation, use the devfile component attribute:
-#   che-code.eclipse.org/vscode-extensions:
-#     - <vsix-url>
-# This is already configured in devworkspaces.yaml and setup-devspaces-users.sh.
+# NOTE: "recommendations" only show the extension in the sidebar — they do NOT
+# auto-install. For auto-installation, use the DEFAULT_EXTENSIONS env var
+# pointing to .vsix file paths (downloaded in a postStart command).
+# See: https://eclipse.dev/che/docs/stable/administration-guide/default-extensions-for-microsoft-visual-studio-code/
+# This auto-install mechanism is configured in devworkspaces.yaml and
+# setup-devspaces-users.sh via DEFAULT_EXTENSIONS + postStart download.
 ---
 apiVersion: v1
 kind: ConfigMap

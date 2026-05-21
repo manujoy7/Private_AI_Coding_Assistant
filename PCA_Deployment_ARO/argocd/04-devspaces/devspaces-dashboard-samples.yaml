@@ -24,9 +24,6 @@ data:
       description: "AI-powered coding with OpenCode + Qwen3.6 via private llm-d Gateway. Includes VS Code extension (Ctrl+Esc) and browser Web UI (port 4096)."
     components:
       - name: dev-tools
-        attributes:
-          che-code.eclipse.org/vscode-extensions:
-            - https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix
         container:
           image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryRequest: 1Gi
@@ -48,12 +45,23 @@ data:
               value: "0"
             - name: OPENCODE_SERVER_PASSWORD
               value: "changeme"
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/opencode-ext/sst-dev.opencode.vsix"
           endpoints:
             - name: opencode-web
               targetPort: 4096
               exposure: public
               protocol: https
     commands:
+      - id: download-opencode-extension
+        exec:
+          label: "Download OpenCode Extension"
+          component: dev-tools
+          commandLine: |
+            mkdir -p /tmp/opencode-ext
+            curl -fsSL "https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix" \
+              --location -o /tmp/opencode-ext/sst-dev.opencode.vsix
+            echo "OpenCode extension downloaded"
       - id: start-opencode-web
         exec:
           label: "Start OpenCode Web UI"
@@ -63,6 +71,7 @@ data:
             echo "OpenCode Web UI started on port 4096"
     events:
       postStart:
+        - download-opencode-extension
         - start-opencode-web
 ---
 apiVersion: v1
