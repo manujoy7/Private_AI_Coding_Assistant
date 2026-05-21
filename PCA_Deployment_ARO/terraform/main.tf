@@ -171,7 +171,7 @@ resource "null_resource" "oc_login" {
 }
 
 # ════════════════════════════════════════════════
-# GPU MachineSet (A100 — post-cluster provisioning)
+# GPU MachineSet (H100 — post-cluster provisioning)
 # ARO only supports one worker profile at cluster creation.
 # GPU nodes are added via MachineSet after the cluster is ready.
 # ════════════════════════════════════════════════

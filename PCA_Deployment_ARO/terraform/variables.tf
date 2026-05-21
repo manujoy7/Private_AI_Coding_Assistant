@@ -18,7 +18,7 @@ variable "environment" {
 variable "cluster_name" {
   description = "ARO cluster name (max 54 characters)"
   type        = string
-  default     = "aro-pca"
+  default     = "aro-pca-aue"
 
   validation {
     condition     = length(var.cluster_name) <= 54
@@ -33,9 +33,9 @@ variable "location" {
 }
 
 variable "aro_version" {
-  description = "OpenShift version for ARO cluster (e.g. 4.19.24)"
+  description = "OpenShift version for ARO cluster"
   type        = string
-  default     = "4.19.24"
+  default     = "4.20.15"
 }
 
 variable "pull_secret" {

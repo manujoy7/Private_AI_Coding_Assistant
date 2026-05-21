@@ -8,9 +8,9 @@
 subscription_id = "00000000-0000-0000-0000-000000000000"
 
 # Cluster configuration
-cluster_name = "aro-pca"
-location     = "centralus"
-aro_version  = "4.19.24"
+cluster_name = "aro-pca-aue"
+location     = "australiaeast"
+aro_version  = "4.20.15"
 environment  = "dev"
 
 # Required: Red Hat pull secret (one-line JSON string)
@@ -32,8 +32,8 @@ worker_disk_size_gb = 128
 # Master nodes
 master_vm_size = "Standard_D8s_v5"
 
-# GPU nodes (NVIDIA A100 80 GB — provisioned post-cluster via MachineSet)
-gpu_vm_size       = "Standard_NC24ads_A100_v4"
+# GPU nodes (NVIDIA H100 NVL 94 GB — provisioned post-cluster via MachineSet)
+gpu_vm_size       = "Standard_NC40ads_H100_v5"
 gpu_node_replicas = 1
 
 # Users
@@ -48,6 +48,6 @@ devspaces_users = [
 huggingface_token = ""
 
 # GitOps: point to your fork of this repo
-gitops_repo_url      = "https://github.com/<your-org>/Private_Code_Assistant.git"
+gitops_repo_url      = "https://github.com/manujoy7/Private_AI_Coding_Assistant.git"
 gitops_repo_revision = "main"
 gitops_repo_path     = "PCA_Deployment_ARO/argocd"

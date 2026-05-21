@@ -34,7 +34,7 @@ metadata:
 spec:
   project: private-code-assistant
   source:
-    repoURL: https://github.com/manu-joy/Private_Code_Assistant
+    repoURL: https://github.com/manujoy7/Private_AI_Coding_Assistant
     targetRevision: main
     path: PCA_Deployment_ARO/argocd/01-operators
   destination:
@@ -67,7 +67,7 @@ metadata:
 spec:
   project: private-code-assistant
   source:
-    repoURL: https://github.com/manu-joy/Private_Code_Assistant
+    repoURL: https://github.com/manujoy7/Private_AI_Coding_Assistant
     targetRevision: main
     path: PCA_Deployment_ARO/argocd/02-platform-config
   destination:
@@ -99,7 +99,7 @@ metadata:
 spec:
   project: private-code-assistant
   source:
-    repoURL: https://github.com/manu-joy/Private_Code_Assistant
+    repoURL: https://github.com/manujoy7/Private_AI_Coding_Assistant
     targetRevision: main
     path: PCA_Deployment_ARO/argocd/03-ai-serving
   destination:
@@ -131,7 +131,7 @@ metadata:
 spec:
   project: private-code-assistant
   source:
-    repoURL: https://github.com/manu-joy/Private_Code_Assistant
+    repoURL: https://github.com/manujoy7/Private_AI_Coding_Assistant
     targetRevision: main
     path: PCA_Deployment_ARO/argocd/04-devspaces
   destination:
@@ -149,3 +149,29 @@ spec:
         duration: 30s
         factor: 2
         maxDuration: 5m
+---
+# Wave 5: Benchmarks (GuideLLM sweep)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pca-benchmarks
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: private-code-assistant
+  source:
+    repoURL: https://github.com/manujoy7/Private_AI_Coding_Assistant
+    targetRevision: main
+    path: PCA_Deployment_ARO/argocd/05-benchmarks
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
