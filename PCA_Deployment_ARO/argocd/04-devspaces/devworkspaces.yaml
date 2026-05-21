@@ -44,8 +44,8 @@ metadata:
     che.eclipse.org/devworkspace: "true"
   annotations:
     che.eclipse.org/devfile-source: |
-      custom:
-        type: inline
+      factory:
+        params: url=https://github.com/manujoy7/Private_AI_Coding_Assistant.git
 spec:
   started: true
   routingClass: che

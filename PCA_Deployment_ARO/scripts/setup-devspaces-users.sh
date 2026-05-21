@@ -31,6 +31,7 @@ USERS=(
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="${SCRIPT_DIR}/../argocd/04-devspaces/devworkspaces.yaml"
 DEVSPACES_DOMAIN=""
+GIT_REPO_URL="https://github.com/manujoy7/Private_AI_Coding_Assistant.git"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -217,8 +218,8 @@ metadata:
     che.eclipse.org/devworkspace: "true"
   annotations:
     che.eclipse.org/devfile-source: |
-      custom:
-        type: inline
+      factory:
+        params: url=${GIT_REPO_URL}
 spec:
   started: true
   routingClass: che
