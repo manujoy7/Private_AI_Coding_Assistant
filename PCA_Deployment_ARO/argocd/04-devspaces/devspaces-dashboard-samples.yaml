@@ -1,0 +1,82 @@
+# DevSpaces dashboard configuration — custom samples and default image.
+# Makes the OpenCode workspace visible on the DevSpaces landing page.
+---
+# Getting-started sample shown on the dashboard landing page
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencode-getting-started-sample
+  namespace: openshift-devspaces
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: getting-started-sample
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    che.eclipse.org/display-name: "OpenCode - Private AI Code Assistant"
+    che.eclipse.org/description: "AI-powered coding workspace with OpenCode pre-configured for private Qwen3.6-35B model inference via llm-d Gateway."
+    che.eclipse.org/tags: '["AI","OpenCode","Private","Qwen3.6"]'
+    che.eclipse.org/icon: "https://opencode.ai/favicon.ico"
+data:
+  devfile.yaml: |
+    schemaVersion: 2.2.2
+    metadata:
+      name: opencode-private-ai
+      displayName: "OpenCode - Private AI Code Assistant"
+      description: "AI-powered coding with OpenCode + Qwen3.6 via private llm-d Gateway"
+    components:
+      - name: dev-tools
+        container:
+          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
+          memoryRequest: 1Gi
+          memoryLimit: 8Gi
+          cpuRequest: 500m
+          cpuLimit: 4000m
+          mountSources: true
+          sourceMapping: /projects
+          env:
+            - name: VLLM_ENDPOINT
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+            - name: VLLM_MODEL_ID
+              value: "Qwen/Qwen3.6-35B-A3B-FP8"
+            - name: OPENAI_API_KEY
+              value: "EMPTY"
+            - name: OPENAI_BASE_URL
+              value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+    commands:
+      - id: opencode
+        exec:
+          label: "Start OpenCode"
+          component: dev-tools
+          workingDir: /projects
+          commandLine: opencode
+          group:
+            kind: run
+            isDefault: true
+---
+# Dashboard samples entry — appears in "Create Workspace" sample list
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opencode-dashboard-sample
+  namespace: openshift-devspaces
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: samples
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+data:
+  sample.json: |
+    [
+      {
+        "displayName": "OpenCode - Private AI Code Assistant",
+        "description": "AI-powered coding workspace with OpenCode pre-configured for private Qwen3.6-35B model. No external API keys needed.",
+        "tags": ["AI", "OpenCode", "Private", "Qwen3.6"],
+        "url": "https://github.com/manujoy7/Private_AI_Coding_Assistant",
+        "icon": {
+          "base64data": "",
+          "mediatype": "image/svg+xml"
+        }
+      }
+    ]

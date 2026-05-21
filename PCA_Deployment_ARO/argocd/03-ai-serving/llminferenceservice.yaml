@@ -155,10 +155,15 @@ metadata:
     openshift.io/display-name: "Qwen 3.6-35B-A3B-FP8"
     serving.kserve.io/deploymentMode: RawDeployment
     opendatahub.io/accelerator-name: nvidia.com/gpu
+  # Scaling: increase maxReplicas and add GPU nodes to scale out.
+  # Each replica requires 1x H100 GPU. The InferencePool + EPP
+  # automatically discovers new replicas and routes intelligently.
+  # To scale: oc scale machineset <gpu-ms> --replicas=N
+  #           then update maxReplicas below to match.
 spec:
   predictor:
     minReplicas: 1
-    maxReplicas: 1
+    maxReplicas: 4
     tolerations:
       - key: nvidia.com/gpu
         operator: Equal

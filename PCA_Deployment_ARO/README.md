@@ -11,16 +11,22 @@ NVIDIA H100 GPU node for LLM inference.
 ```
 Developer (DevSpaces / OpenCode)
   │
-  │  HTTPS (cluster-internal)
+  │  HTTPS (cluster-internal, self-signed TLS)
   ▼
-Red Hat AI Gateway (llm-d)
+Data Science Gateway (TLS termination, port 443)
   │  Gateway API + HTTPRoute
   ▼
-KServe Predictor Service (port 80)
-  │
+Envoy Proxy (EPP sidecar, port 8081)
+  │  ExtProc → EPP gRPC (port 9002)
   ▼
-vLLM v0.19.0 (Custom ServingRuntime)
-  │  OpenAI-compatible API on port 8000
+Endpoint Picker Plugin (EPP)
+  │  Selects optimal vLLM replica via:
+  │    • Queue depth scoring (weight: 2)
+  │    • Prefix cache hit scoring (weight: 3)
+  │  Sets x-gateway-destination-endpoint header
+  ▼
+vLLM Replica N (KServe RawDeployment, port 8000)
+  │  Custom ServingRuntime (vLLM v0.19.0)
   ▼
 Qwen/Qwen3.6-35B-A3B-FP8
   │  FP8 quantized, 35B total / 3B active MoE
@@ -28,9 +34,25 @@ Qwen/Qwen3.6-35B-A3B-FP8
 NVIDIA H100 NVL 94GB HBM3
 ```
 
-All client traffic flows through the Red Hat AI Gateway — DevSpaces and OpenCode
-never access the model endpoint directly. This provides a stable endpoint, TLS
-termination, and a path for future EPP-based intelligent routing.
+### Scalable Routing Pattern
+
+All client traffic flows through the EPP-based routing stack. The pattern is
+designed for multi-replica, multi-GPU scaling:
+
+1. **Data Science Gateway** — TLS termination, stable cluster-internal endpoint
+2. **HTTPRoute** — `/v1/chat/completions` and `/v1/completions` route to the EPP
+   Envoy proxy; `/v1/models` routes directly to the predictor Service
+3. **Envoy + EPP (ExtProc)** — Envoy calls the EPP via gRPC ExtProc. The EPP
+   uses the InferencePool to discover all vLLM replicas, scores them by queue
+   depth and prefix cache affinity, and sets `x-gateway-destination-endpoint` to
+   the optimal pod's IP. Envoy uses ORIGINAL_DST to forward directly.
+4. **InferencePool** — selects pods by label (`serving.kserve.io/inferenceservice: qwen36-vllm`)
+   and exposes target port 8000. Automatically discovers new replicas.
+5. **InferenceModel** — maps model name `Qwen/Qwen3.6-35B-A3B-FP8` to the pool,
+   enabling future multi-model routing through a single gateway.
+
+**Current demo: 1 replica.** Scale by increasing GPU nodes and InferenceService
+`maxReplicas` — the EPP automatically discovers and routes to new replicas.
 
 ---
 
@@ -76,7 +98,11 @@ termination, and a path for future EPP-based intelligent routing.
 | Transformers | 4.57.6 | Required >=5.1 for Qwen3.6 |
 | Model | Qwen/Qwen3.6-35B-A3B-FP8 | 35B total / 3B active MoE, FP8, 32K ctx |
 | Serving | KServe RawDeployment | Via custom ServingRuntime |
-| Gateway | llm-d (Red Hat AI Gateway) | Gateway API + HTTPRoute |
+| Gateway | Data Science Gateway | Gateway API + HTTPRoute (TLS) |
+| EPP | RHOAI odh-llm-d-inference-scheduler | Prefix-cache + queue-depth scoring |
+| Envoy Proxy | v1.33.2 (distroless) | ExtProc sidecar for EPP |
+| InferencePool | GAIE v1 (GA CRD) | Pod discovery + EPP reference |
+| InferenceModel | GAIE v1alpha2 | Model-to-pool mapping |
 
 ### IaC / CLI Tools
 
@@ -274,13 +300,18 @@ PCA_Deployment_ARO/
 │   │   ├── hf-token-placeholder.yaml   #   HuggingFace token secret
 │   │   └── rbac.yaml                   #   RoleBindings for dev users
 │   ├── 03-ai-serving/                  # Wave 3: AI serving stack
-│   │   ├── llminferenceservice.yaml    #   PVC + HardwareProfile + ServingRuntime +
+│   │   ├── llminferenceservice.yaml    #   HardwareProfile + ServingRuntime +
 │   │   │                               #   InferenceService (KServe RawDeployment)
 │   │   ├── llm-d-gateway.yaml          #   Gateway API Gateway + HTTPRoute
+│   │   ├── llm-d-epp.yaml             #   EPP Deployment + Envoy sidecar +
+│   │   │                               #   RBAC + ConfigMaps (scheduler config)
+│   │   ├── inference-routing.yaml      #   InferencePool + InferenceModel
 │   │   ├── pvcs.yaml                   #   100Gi model cache PVC (managed-csi)
 │   │   └── tls-secret-job.yaml         #   Self-signed TLS cert for gateway
 │   ├── 04-devspaces/                   # Wave 4: Developer workspaces
-│   │   ├── devworkspaces.yaml          #   3x DevWorkspace with OpenCode config
+│   │   ├── devworkspaces.yaml          #   3x DevWorkspace with OpenCode image
+│   │   ├── opencode-image-build.yaml   #   BuildConfig + RBAC for custom image
+│   │   ├── devspaces-dashboard-samples.yaml  #   Dashboard landing page samples
 │   │   ├── roo-code-configmaps.yaml    #   Roo Code provider config
 │   │   └── vscode-extensions-config.yaml
 │   └── 05-benchmarks/                  # Wave 5: Performance benchmarks
@@ -330,8 +361,9 @@ Environment variables handle non-root container constraints:
 - **Mode**: KServe RawDeployment (no Knative/Serverless dependency)
 - **Runtime**: `vllm-cuda-v0190`
 - **Model args**: `--model=Qwen/Qwen3.6-35B-A3B-FP8 --tensor-parallel-size=1 --max-model-len=32768`
-- **Resources**: 8-16 CPU, 80-120Gi RAM, 1x NVIDIA GPU
+- **Resources per replica**: 8-16 CPU, 80-120Gi RAM, 1x NVIDIA GPU
 - **Toleration**: `nvidia.com/gpu=present:NoSchedule`
+- **Scaling**: `minReplicas: 1`, `maxReplicas: 4` (increase for more GPU nodes)
 
 ### Model Cache PVC (`model-cache`)
 
@@ -341,13 +373,49 @@ re-downloading the model and re-compiling kernels (~15 min saved on restart).
 
 ### AI Gateway (`llm-d-gateway`)
 
-Gateway API `Gateway` with HTTPS listener (self-signed TLS) and `HTTPRoute`
-routing all `/v1` traffic to the KServe predictor service.
+Gateway API `Gateway` with HTTPS listener (self-signed TLS) and `HTTPRoute`.
+Inference requests (`/v1/chat/completions`, `/v1/completions`, `/v1`) route
+through the EPP Envoy proxy for intelligent scheduling. Metadata requests
+(`/v1/models`) bypass EPP and go directly to the predictor Service.
 
 **Cluster-internal endpoint:**
 ```
 https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1
 ```
+
+### Endpoint Picker Plugin (EPP)
+
+The EPP is the intelligent request scheduler deployed as an Envoy sidecar.
+
+| Component | Image |
+|-----------|-------|
+| EPP | `registry.redhat.io/rhoai/odh-llm-d-inference-scheduler-rhel9` (RHOAI-bundled) |
+| Envoy | `envoyproxy/envoy:distroless-v1.33.2` |
+
+**Scheduling algorithm** (configurable via `EndpointPickerConfig`):
+- `queue-scorer` (weight 2) — routes to replicas with shorter queues
+- `prefix-cache-scorer` (weight 3) — routes similar prompts to the same replica
+  for KV cache reuse, minimizing redundant computation
+
+**ExtProc flow:**
+1. Envoy receives the inference request on port 8081
+2. Envoy calls EPP via gRPC ExtProc (localhost:9002)
+3. EPP queries InferencePool for available vLLM pods
+4. EPP scores each pod using queue depth + prefix cache hit metrics
+5. EPP returns `x-gateway-destination-endpoint` header with optimal pod IP
+6. Envoy forwards request to the selected pod using ORIGINAL_DST cluster
+
+### InferencePool (`qwen36-vllm-pool`)
+
+Selects vLLM predictor pods by label `serving.kserve.io/inferenceservice: qwen36-vllm`
+and forwards traffic to port 8000. Automatically discovers new replicas when
+InferenceService scales up.
+
+### InferenceModel (`qwen36-model`)
+
+Maps model name `Qwen/Qwen3.6-35B-A3B-FP8` to `qwen36-vllm-pool`. For
+multi-model setups, create additional InferenceModel resources pointing to
+different InferencePools.
 
 ---
 
@@ -381,15 +449,57 @@ Full results: [`testresults_h100.md`](../testresults_h100.md)
 
 ---
 
-## Scaling GPU Nodes
+## Scaling
+
+### Scaling GPU Nodes and Model Replicas
+
+The architecture supports scaling from 1 to N replicas. Each replica requires
+one H100 GPU node.
 
 ```bash
-# Scale to 0 (stop GPU billing)
-oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=0
+# 1. Scale GPU MachineSet to N nodes
+oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=N
 
-# Scale back to 1
-oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=1
+# 2. Wait for nodes to be Ready
+oc get nodes -l nvidia.com/gpu.present=true -w
+
+# 3. Update InferenceService replicas (maxReplicas already set to 4)
+oc patch inferenceservice qwen36-vllm -n ai-serving --type merge \
+  -p '{"spec":{"predictor":{"minReplicas": N}}}'
+
+# 4. Verify EPP discovers new replicas (check EPP logs)
+oc logs deploy/llm-d-epp -n ai-serving -c epp | grep "Starting refresher"
 ```
+
+The InferencePool automatically discovers new vLLM pods via label selector.
+The EPP immediately starts collecting metrics from new replicas and routes
+requests using queue depth + prefix cache scoring.
+
+### Scaling EPP
+
+For very high throughput, scale EPP replicas:
+
+```bash
+oc scale deploy/llm-d-epp -n ai-serving --replicas=2
+```
+
+### Scale to Zero (stop GPU billing)
+
+```bash
+oc patch inferenceservice qwen36-vllm -n ai-serving --type merge \
+  -p '{"spec":{"predictor":{"minReplicas": 0}}}'
+oc scale machineset <infra_id>-gpu-h100 -n openshift-machine-api --replicas=0
+```
+
+### Adding a Second Model
+
+To serve a second model (e.g., a coding-specific model alongside the general one):
+
+1. Create a new `ServingRuntime` and `InferenceService` for the second model
+2. Create a new `InferencePool` selecting the second model's pods
+3. Create a new `InferenceModel` mapping the model name to the new pool
+4. Deploy a second EPP instance pointing to the new pool
+5. Add `HTTPRoute` rules to route based on model name header
 
 ---
 
@@ -418,9 +528,15 @@ The host runs NVIDIA driver 550 (CUDA 12.4) but vLLM v0.19.0 needs CUDA 12.9.
 `VLLM_ENABLE_CUDA_COMPATIBILITY=1` and the compat libs (575.57.08) bridge this gap.
 If you see CUDA errors, verify `LD_LIBRARY_PATH` includes `/usr/local/cuda/compat`.
 
-**AI Gateway returns 503:**
-Check that the KServe predictor pod is Ready and the HTTPRoute points to
-`qwen36-vllm-predictor` service on port 80.
+**AI Gateway returns 503 or 504:**
+Check that the EPP pod is Ready (2/2 containers). Check that the InferencePool
+has discovered the vLLM pods: `oc logs deploy/llm-d-epp -c epp | grep "Starting refresher"`.
+Verify the HTTPRoute backend resolves: `oc get httproute model-route -n ai-serving -o yaml`.
+
+**EPP pod in CrashLoopBackOff:**
+Check the EPP config version (`apiVersion: inference.networking.x-k8s.io/v1alpha1`).
+Ensure RBAC includes `inferenceobjectives` and `leases`. Check that the
+`qwen36-vllm-pool` InferencePool exists.
 
 **Model download slow or failing:**
 The model-cache PVC persists downloads across restarts. If HuggingFace is rate-limited,

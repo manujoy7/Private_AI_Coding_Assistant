@@ -35,7 +35,7 @@ spec:
     components:
       - name: dev-tools
         container:
-          image: registry.redhat.io/devspaces/udi-rhel8:latest
+          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryLimit: 8Gi
           memoryRequest: 1Gi
           cpuLimit: "4000m"
@@ -144,7 +144,7 @@ spec:
     components:
       - name: dev-tools
         container:
-          image: registry.redhat.io/devspaces/udi-rhel8:latest
+          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryLimit: 8Gi
           memoryRequest: 1Gi
           cpuLimit: "4000m"
@@ -253,7 +253,7 @@ spec:
     components:
       - name: dev-tools
         container:
-          image: registry.redhat.io/devspaces/udi-rhel8:latest
+          image: image-registry.openshift-image-registry.svc:5000/opencode-build/devspaces-opencode:latest
           memoryLimit: 8Gi
           memoryRequest: 1Gi
           cpuLimit: "4000m"

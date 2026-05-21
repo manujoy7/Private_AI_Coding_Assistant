@@ -30,6 +30,18 @@ step "Step 1: Deploying full PCA stack..."
 chmod +x "${SCRIPT_DIR}/deploy-full-stack.sh"
 "${SCRIPT_DIR}/deploy-full-stack.sh" "${BASE_PATH}"
 
+# ── Step 1b: Trigger OpenCode custom image build ──────────────────────
+step "Step 1b: Triggering OpenCode DevSpaces image build..."
+for i in $(seq 1 30); do
+  if oc get buildconfig devspaces-opencode -n opencode-build &>/dev/null; then
+    oc start-build devspaces-opencode -n opencode-build 2>/dev/null || true
+    info "OpenCode image build started (runs in background)."
+    break
+  fi
+  echo "  Waiting for BuildConfig to appear... (${i}/30)"
+  sleep 10
+done
+
 # ── Step 2: Wait for GPU node to be ready ──────────────────────────────
 step "Step 2: Waiting for H100 GPU node..."
 for i in $(seq 1 90); do

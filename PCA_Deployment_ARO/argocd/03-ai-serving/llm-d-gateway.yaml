@@ -1,7 +1,13 @@
-# Red Hat AI Gateway (llm-d) for internal cluster routing.
-# All client traffic (DevSpaces, OpenCode) reaches the model through this
-# Gateway — never directly to the model pod. This provides a stable endpoint,
-# TLS termination, and a path for future EPP-based intelligent routing.
+# Red Hat AI Gateway (llm-d) with EPP-based intelligent routing.
+#
+# Traffic flow (scalable pattern):
+#   Client → Data Science Gateway (TLS termination, port 443)
+#   → HTTPRoute → EPP Envoy proxy (port 8081)
+#   → EPP ExtProc (picks optimal replica via queue depth + prefix cache scoring)
+#   → vLLM pod (port 8000)
+#
+# The /v1/models endpoint routes directly to the predictor Service
+# since it's a metadata query, not an inference request.
 #
 # Internal DNS endpoint:
 #   https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local
@@ -29,15 +35,15 @@ spec:
         namespaces:
           from: Same
 ---
-# HTTPRoute: routes all /v1 inference traffic to the KServe predictor service.
-# The KServe predictor service (port 80) proxies to the vLLM container (port 8000).
+# Inference requests route through EPP Envoy for intelligent replica selection.
+# Metadata requests (/v1/models) bypass EPP and go directly to the predictor.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: model-route
   namespace: ai-serving
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "5"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   parentRefs:
@@ -49,12 +55,25 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /v1
+            value: /v1/models
       backendRefs:
         - group: ""
           kind: Service
           name: qwen36-vllm-predictor
           port: 80
+          weight: 1
+      timeouts:
+        backendRequest: "0s"
+        request: "0s"
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: llm-d-epp
+          port: 8081
           weight: 1
       timeouts:
         backendRequest: "0s"
