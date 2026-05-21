@@ -27,6 +27,7 @@ Endpoint Picker Plugin (EPP)
   ▼
 vLLM Replica N (KServe RawDeployment, port 8000)
   │  Custom ServingRuntime (vLLM v0.19.0)
+  │  Tool calling: --enable-auto-tool-choice --tool-call-parser=hermes
   ▼
 Qwen/Qwen3.6-35B-A3B-FP8
   │  FP8 quantized, 35B total / 3B active MoE
@@ -345,6 +346,17 @@ and GPU (1x `nvidia.com/gpu`) resource bounds.
 | Cache | PVC-backed (`/model-cache`) for persistent model weights and JIT kernels |
 | Probes | Startup: 60min tolerance, Readiness: 10s, Liveness: 30s |
 
+**vLLM server args:**
+
+| Arg | Purpose |
+|-----|---------|
+| `--port=8000` | HTTP listen port |
+| `--served-model-name=Qwen/Qwen3.6-35B-A3B-FP8` | Model name in OpenAI API responses |
+| `--trust-remote-code` | Required for Qwen3.5-MoE architecture |
+| `--enable-prefix-caching` | KV cache reuse for shared prefixes (EPP affinity) |
+| `--enable-auto-tool-choice` | Allow model to decide when to use tools (required by OpenCode/Roo Code) |
+| `--tool-call-parser=hermes` | Parse Hermes-format tool calls from model output into OpenAI `tool_calls` |
+
 Environment variables handle non-root container constraints:
 
 | Variable | Value | Purpose |
@@ -364,6 +376,26 @@ Environment variables handle non-root container constraints:
 - **Resources per replica**: 8-16 CPU, 80-120Gi RAM, 1x NVIDIA GPU
 - **Toleration**: `nvidia.com/gpu=present:NoSchedule`
 - **Scaling**: `minReplicas: 1`, `maxReplicas: 4` (increase for more GPU nodes)
+
+**Combined vLLM args** (ServingRuntime + InferenceService):
+
+```
+python3 -m vllm.entrypoints.openai.api_server \
+  --port=8000 \
+  --served-model-name=Qwen/Qwen3.6-35B-A3B-FP8 \
+  --trust-remote-code \
+  --enable-prefix-caching \
+  --enable-auto-tool-choice \
+  --tool-call-parser=hermes \
+  --model=Qwen/Qwen3.6-35B-A3B-FP8 \
+  --tensor-parallel-size=1 \
+  --max-model-len=32768
+```
+
+> **Tool calling is required** for OpenCode's agentic features. Without
+> `--enable-auto-tool-choice` and `--tool-call-parser=hermes`, OpenCode
+> requests fail with: `"auto" tool choice requires --enable-auto-tool-choice
+> and --tool-call-parser to be set`.
 
 ### Model Cache PVC (`model-cache`)
 
@@ -537,6 +569,20 @@ Verify the HTTPRoute backend resolves: `oc get httproute model-route -n ai-servi
 Check the EPP config version (`apiVersion: inference.networking.x-k8s.io/v1alpha1`).
 Ensure RBAC includes `inferenceobjectives` and `leases`. Check that the
 `qwen36-vllm-pool` InferencePool exists.
+
+**OpenCode "auto tool choice requires --enable-auto-tool-choice" error:**
+OpenCode sends `tool_choice: "auto"` for agentic features. vLLM rejects these
+requests unless both `--enable-auto-tool-choice` and `--tool-call-parser` are set
+in the ServingRuntime args. The `hermes` parser works for Qwen3.6 models. To fix:
+
+```bash
+oc patch servingruntime vllm-cuda-v0190 -n ai-serving --type='json' -p='[
+  {"op": "add", "path": "/spec/containers/0/args/-", "value": "--enable-auto-tool-choice"},
+  {"op": "add", "path": "/spec/containers/0/args/-", "value": "--tool-call-parser=hermes"}
+]'
+```
+
+Then delete the running vLLM pod to trigger a rollout with the new args.
 
 **Model download slow or failing:**
 The model-cache PVC persists downloads across restarts. If HuggingFace is rate-limited,
