@@ -36,10 +36,8 @@ components:
           value: "https://llm-d-gateway-data-science-gateway-class.ai-serving.svc.cluster.local/v1"
         - name: NODE_TLS_REJECT_UNAUTHORIZED
           value: "0"
-        - name: OPENCODE_SERVER_PASSWORD
-          value: "changeme"
         - name: DEFAULT_EXTENSIONS
-          value: "/tmp/opencode-ext/sst-dev.opencode.vsix"
+          value: "/tmp/opencode-ext/sst-dev.opencode-v2.vsix,/tmp/opencode-ext/sst-dev.opencode.vsix"
       endpoints:
         - name: opencode-web
           targetPort: 4096
@@ -63,9 +61,11 @@ commands:
       component: dev-tools
       commandLine: |
         mkdir -p /tmp/opencode-ext
-        curl -fsSL "https://open-vsx.org/api/sst-dev/opencode/latest/file/sst-dev.opencode-0.0.13.vsix" \
+        curl -fsSL "https://open-vsx.org/api/sst-dev/opencode-v2/0.1.1/file/sst-dev.opencode-v2-0.1.1.vsix" \
+          --location -o /tmp/opencode-ext/sst-dev.opencode-v2.vsix
+        curl -fsSL "https://open-vsx.org/api/sst-dev/opencode/0.0.13/file/sst-dev.opencode-0.0.13.vsix" \
           --location -o /tmp/opencode-ext/sst-dev.opencode.vsix
-        echo "OpenCode extension downloaded"
+        echo "OpenCode extensions downloaded (v2 Beta + classic)"
   - id: start-opencode-web
     exec:
       label: "Start OpenCode Web UI"

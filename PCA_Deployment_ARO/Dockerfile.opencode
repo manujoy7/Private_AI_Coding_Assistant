@@ -10,10 +10,11 @@ FROM registry.redhat.io/devspaces/udi-rhel8:latest
 
 USER root
 
-# Install OpenCode CLI (AI coding agent).
-# Copy binary to /usr/local/bin (always in PATH) rather than symlink in
-# ~/.local/bin which gets overwritten by the DevSpaces runtime overlay.
-RUN curl -fsSL https://opencode.ai/install | bash && \
+# Install OpenCode CLI v1.15.13 (AI coding agent).
+# Pin to specific version for reproducible builds. Copy binary to /usr/local/bin
+# (always in PATH) rather than symlink in ~/.local/bin which gets overwritten
+# by the DevSpaces runtime overlay.
+RUN curl -fsSL https://opencode.ai/install | OPENCODE_VERSION=1.15.13 bash && \
     cp /home/user/.opencode/bin/opencode /usr/local/bin/opencode && \
     chmod 755 /usr/local/bin/opencode
 
