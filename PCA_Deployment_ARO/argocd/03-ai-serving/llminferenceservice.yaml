@@ -90,7 +90,8 @@ spec:
         - --trust-remote-code
         - --enable-prefix-caching
         - --enable-auto-tool-choice
-        - --tool-call-parser=hermes
+        - --tool-call-parser=qwen3_xml
+        - --reasoning-parser=qwen3
       env:
         - name: VLLM_ENABLE_CUDA_COMPATIBILITY
           value: "1"
@@ -106,6 +107,10 @@ spec:
           value: "/model-cache/xdg-cache"
         - name: HOME
           value: "/tmp"
+        - name: DG_JIT_CACHE_DIR
+          value: "/model-cache/deep-gemm"
+        - name: VLLM_CACHE_ROOT
+          value: "/model-cache/vllm-cache"
       ports:
         - containerPort: 8000
           name: http
