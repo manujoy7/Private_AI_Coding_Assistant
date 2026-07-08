@@ -118,7 +118,6 @@ module "operator_roles" {
   account_role_prefix  = var.account_role_prefix
   operator_role_prefix = local.operator_role_prefix
   oidc_endpoint_url    = module.oidc_config.oidc_endpoint_url
-  path                 = "/service-role/"
 }
 
 # ════════════════════════════════════════════════
