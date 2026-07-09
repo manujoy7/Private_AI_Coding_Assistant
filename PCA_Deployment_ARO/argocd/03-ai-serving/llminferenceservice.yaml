@@ -1,16 +1,17 @@
 # Qwen3.6-35B-A3B-FP8 on NVIDIA H100 NVL 94 GB
-# Served via KServe RawDeployment with custom vLLM v0.19.0 ServingRuntime
+# Served via KServe RawDeployment with custom vLLM v0.24.0 ServingRuntime
 # Routed through the Red Hat AI Gateway (llm-d) for production traffic
 #
-# Why vLLM v0.19.0 (upstream) instead of RHOAI bundled vLLM?
-#   - RHOAI 3.3.1 bundles vllm-cuda-rhel9 based on vLLM ~0.13, which uses
-#     transformers <5.x and does not recognise Qwen3_5MoeForConditionalGeneration.
-#   - Qwen3.6-35B-A3B-FP8 requires transformers >=5.1 and vLLM >=0.18 for native
-#     Qwen3.5-MoE architecture support, DeepGEMM FP8 MoE kernels, and
-#     FlashAttention v3 on H100.
-#   - vLLM v0.19.0 ships with PyTorch 2.10 + CUDA 12.9. The host NVIDIA driver
-#     is 550 (CUDA 12.4), so VLLM_ENABLE_CUDA_COMPATIBILITY=1 bridges the gap
-#     using compat libs (575.57.08).
+# Why vLLM v0.24.0 (upstream) instead of RHOAI bundled vLLM?
+#   - RHOAI 3.3.x bundles vllm-cuda-rhel9 based on vLLM ~0.13, which lacks the
+#     qwen3_xml streaming tool parser and Qwen3.5-MoE architecture support.
+#   - v0.24.0 includes the new Streaming Parser Engine (PR #45413) that properly
+#     handles Qwen3.x XML tool calls in streaming mode — critical for OpenCode.
+#   - The --reasoning-parser=qwen3 flag MUST NOT be used with tool calling: it
+#     captures tool call XML inside <think> tokens, preventing the tool parser
+#     from seeing them. This was the root cause of broken tool calls on ROSA.
+#   - vLLM v0.24.0 ships with PyTorch 2.10 + CUDA 12.9. The host NVIDIA driver
+#     is 550 (CUDA 12.4), so VLLM_ENABLE_CUDA_COMPATIBILITY=1 bridges the gap.
 #
 # Model: Qwen3.6 MoE — 35B total / 3B active, 256 experts, FP8 weights (~35GB).
 # Fits H100 94GB HBM3 with ample KV cache headroom.
@@ -39,7 +40,7 @@
 #
 #   Model Family          tool-call-parser   reasoning-parser   min vLLM
 #   ───────────────────── ────────────────── ────────────────── ────────
-#   Qwen3.6 / Qwen3.5    qwen3_xml          qwen3              0.19.0
+#   Qwen3.6 / Qwen3.5    qwen3_xml          (disabled)         0.24.0
 #   Qwen2.5              hermes             (none)             0.13+
 #   DeepSeek R1 / V3     hermes             deepseek_r1        0.18+
 #   Llama 3.x            llama3_json        (none)             0.15+
@@ -87,14 +88,14 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
 metadata:
-  name: vllm-cuda-v0190
+  name: vllm-cuda-v0240
   namespace: ai-serving
   labels:
     opendatahub.io/dashboard: "true"
   annotations:
-    openshift.io/display-name: "vLLM v0.19.0 NVIDIA GPU (Custom)"
-    opendatahub.io/template-display-name: "vLLM v0.19.0 NVIDIA GPU (Custom)"
-    opendatahub.io/template-name: vllm-cuda-v0190
+    openshift.io/display-name: "vLLM v0.24.0 NVIDIA GPU (Custom)"
+    opendatahub.io/template-display-name: "vLLM v0.24.0 NVIDIA GPU (Custom)"
+    opendatahub.io/template-name: vllm-cuda-v0240
     opendatahub.io/apiProtocol: REST
     opendatahub.io/accelerator-name: nvidia.com/gpu
 spec:
@@ -109,7 +110,7 @@ spec:
       autoSelect: true
   containers:
     - name: kserve-container
-      image: vllm/vllm-openai:v0.19.0
+      image: vllm/vllm-openai:v0.24.0
       command:
         - python3
         - -m
@@ -121,7 +122,6 @@ spec:
         - --enable-prefix-caching
         - --enable-auto-tool-choice
         - --tool-call-parser=qwen3_xml
-        - --reasoning-parser=qwen3
       env:
         - name: VLLM_ENABLE_CUDA_COMPATIBILITY
           value: "1"
@@ -209,11 +209,11 @@ spec:
     model:
       modelFormat:
         name: vLLM
-      runtime: vllm-cuda-v0190
+      runtime: vllm-cuda-v0240
       args:
         - --model=Qwen/Qwen3.6-35B-A3B-FP8
         - --tensor-parallel-size=1
-        - --max-model-len=262144
+        - --max-model-len=200000
       resources:
         requests:
           cpu: "8"

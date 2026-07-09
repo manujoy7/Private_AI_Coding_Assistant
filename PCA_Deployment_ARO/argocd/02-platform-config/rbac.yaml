@@ -7,7 +7,7 @@
 # The setup-devspaces-users.sh script handles RBAC for the auto-provisioned
 # namespaces dynamically. These static bindings are kept for completeness.
 #
-# Users Dev1 and Dev2 are created via HTPasswd identity provider by the
+# Users dev1, dev2, dev3 are created via HTPasswd identity provider by the
 # setup-devspaces-users.sh script.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -18,10 +18,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 subjects:
   - kind: User
-    name: Dev1
+    name: dev1
     apiGroup: rbac.authorization.k8s.io
   - kind: User
-    name: Dev2
+    name: dev2
+    apiGroup: rbac.authorization.k8s.io
+  - kind: User
+    name: dev3
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole

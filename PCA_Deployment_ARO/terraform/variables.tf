@@ -132,7 +132,7 @@ variable "model_id" {
 variable "vllm_image" {
   description = "vLLM container image (must support the model architecture)"
   type        = string
-  default     = "vllm/vllm-openai:v0.19.0"
+  default     = "vllm/vllm-openai:v0.24.0"
 }
 
 variable "vllm_tool_call_parser" {
@@ -147,15 +147,15 @@ variable "vllm_tool_call_parser" {
 }
 
 variable "vllm_reasoning_parser" {
-  description = "Reasoning parser for vLLM thinking models. Use 'qwen3' for Qwen3.x, 'deepseek_r1' for DeepSeek, or empty string to disable."
+  description = "Reasoning parser for vLLM thinking models. Use 'qwen3' for Qwen3.x, 'deepseek_r1' for DeepSeek, or empty string to disable. WARNING: enabling this with tool calling causes tool call XML to be captured inside <think> tokens, breaking streaming tool parsing."
   type        = string
-  default     = "qwen3"
+  default     = ""
 }
 
 variable "vllm_max_model_len" {
   description = "Maximum context length for vLLM (tokens). Set based on model capability and available GPU memory."
   type        = number
-  default     = 262144
+  default     = 200000
 }
 
 variable "vllm_tensor_parallel_size" {
@@ -184,8 +184,9 @@ variable "devspaces_users" {
   }))
   sensitive = true
   default = [
-    { username = "Dev1", password = "" },
-    { username = "Dev2", password = "" }
+    { username = "dev1", password = "" },
+    { username = "dev2", password = "" },
+    { username = "dev3", password = "" }
   ]
 }
 
